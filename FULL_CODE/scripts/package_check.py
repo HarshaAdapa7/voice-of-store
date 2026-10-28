@@ -25,7 +25,9 @@ def main() -> int:
     root = Path(ap.parse_args().root).resolve()
     bad: list[str] = []
 
-    top = {p.name for p in root.iterdir()}
+    tracked = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True).stdout.split()
+    # the zip is a fresh clone, so only tracked files count; fall back to the folder when git is unavailable
+    top = {t.split("/")[0] for t in tracked} if tracked else {p.name for p in root.iterdir()}
     extra = top - ALLOWED_TOP
     if extra:
         bad.append(f"unexpected top-level items: {sorted(extra)}")
@@ -70,7 +72,6 @@ def main() -> int:
         if h.lower() not in readme.lower():
             bad.append(f"README missing section: {h}")
 
-    tracked = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True).stdout.split()
     for f in ("submission/R5_predictions.csv", "submission/R5_emerging_flags.csv", "submission/detector_cmd.txt"):
         if tracked and f not in tracked:
             bad.append(f"{f} is not committed")
