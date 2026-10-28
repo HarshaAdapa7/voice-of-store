@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pre-submission check of the project layout and rules. Run from the project root (or anywhere):
+"""Pre-submission check of the project layout and rules. Run from anywhere (defaults to the project that contains this script):
 
     python FULL_CODE/scripts/package_check.py [--root .]
 
@@ -24,7 +24,7 @@ SECRETS = re.compile(r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default=".")
+    ap.add_argument("--root", default=str(Path(__file__).resolve().parents[2]))
     root = Path(ap.parse_args().root).resolve()
     bad: list[str] = []
 
