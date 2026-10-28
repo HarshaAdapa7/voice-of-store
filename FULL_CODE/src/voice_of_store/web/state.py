@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .. import config as C
-from ..brief import build_region_week
+from ..brief import build_region_week, severity_rank, trend_arrow
 from ..classify import FeedbackClassifier
 from ..io import Data, load_data
 from ..pipeline import prepare_rows
@@ -38,9 +38,28 @@ class AppState:
         self.store_region = dict(zip(d.stores["store_id"], d.stores["region"]))
         self.types = d.taxonomy.reset_index()[["issue_type_id", "issue_type", "owner_function", "policy_severity_floor"]]
         self._lock = threading.Lock()
+        self._index_rows()
         self._brief_cache: dict = {}
         self._validation: dict | None = None
         self._submission_dir = Path(submission_dir)
+
+    def _index_rows(self) -> None:
+        """Build the lookups once so each request is a dictionary read, not a scan of 40,000 rows."""
+        r = self.rows
+        self._by_id = r.set_index("feedback_id")[["channel", "text"]]
+        issues = r[~r["itype"].isin(C.NON_ISSUE) & r["store"].notna()]
+        self._counts = issues.groupby(["store", "itype", "week"]).size()
+        self._chain = issues.groupby(["itype", "week"]).size()
+        region = r["store"].map(self.store_region)
+        self._region_week_rows = r[region.notna()].groupby([region[region.notna()], r["week"]]).size()
+        act = r[(r["actionable"] == 1) & ~r["itype"].isin(C.NON_ISSUE) & r["store"].notna()]
+        self._store_week_actionable = act.groupby(["store", "week"]).size()
+
+    def warm(self) -> None:
+        """Compute every brief of the test weeks in the background so the first click is instant."""
+        for week in self.test_weeks:
+            for region in self.regions:
+                self.brief(region, week)
 
     # ---- queries (all arguments are validated by the caller against these allow-lists) ----
     def meta(self) -> dict:
@@ -67,13 +86,11 @@ class AppState:
             return self._brief_cache[key]
 
     def week_rows(self, region: str, week: str) -> int:
-        ids = set(self.data.stores[self.data.stores["region"] == region]["store_id"])
-        r = self.rows
-        return int(((r["week"] == week) & r["store"].isin(ids)).sum())
+        return int(self._region_week_rows.get((region, week), 0))
 
     def flags_for(self, week: str) -> list[dict]:
         out = []
-        by_id = self.rows.set_index("feedback_id")
+        by_id = self._by_id
         for f in self.flags[self.flags["as_of_week_start"] == week].itertuples():
             ids = f.evidence_feedback_ids.split(";")
             ev = [
@@ -96,10 +113,8 @@ class AppState:
         return out
 
     def series(self, store_id: str, issue_type: str) -> dict:
-        r = self.rows
-        sub = r[(r["store"] == store_id) & (r["itype"] == issue_type)]
-        counts = sub.groupby("week").size()
-        chain = r[(r["itype"] == issue_type) & r["store"].notna()].groupby("week").size()
+        counts = self._counts.get((store_id, issue_type), pd.Series(dtype=int))
+        chain = self._chain.get(issue_type, pd.Series(dtype=int))
         flagged = self.flags[(self.flags["store_id"] == store_id) & (self.flags["issue_type_id"] == issue_type)][
             "as_of_week_start"
         ].tolist()
@@ -108,6 +123,66 @@ class AppState:
             store_counts=[int(counts.get(w, 0)) for w in self.weeks],
             chain_counts=[int(chain.get(w, 0)) for w in self.weeks],
             flagged_weeks=flagged,
+        )
+
+    def store_ids_in_text(self, text: str) -> list[str]:
+        """Stores whose locality the text names (same rule as the scorer), longest names first."""
+        return self.resolver.names_in_text(text)
+
+    def issue_catalogue(self) -> list[dict]:
+        return [
+            dict(
+                id=r.issue_type_id,
+                name=r.issue_type,
+                owner=r.owner_function,
+                floor=r.policy_severity_floor,
+                description=str(r.description),
+            )
+            for r in self.data.taxonomy.reset_index().itertuples()
+            if r.issue_type_id not in C.NON_ISSUE
+        ]
+
+    def store_overview(self, store_id: str, week: str) -> dict:
+        """Everything the store page and the assistant show for one store and week."""
+        prev = str((pd.Timestamp(week) - pd.Timedelta(days=7)).date())
+        r = self.rows
+        cur = r[(r["store"] == store_id) & (r["week"] == week) & (r["actionable"] == 1) & ~r["itype"].isin(C.NON_ISSUE)]
+        before = r[(r["store"] == store_id) & (r["week"] == prev) & (r["actionable"] == 1) & ~r["itype"].isin(C.NON_ISSUE)]
+        before_counts = before.groupby("itype").size()
+        tax = self.data.taxonomy
+        top = []
+        for itype, g in cur.groupby("itype"):
+            sev = C.SEVERITIES[severity_rank(itype, g["severity"])]
+            n_prev = int(before_counts.get(itype, 0))
+            top.append(
+                dict(
+                    issue_type=itype,
+                    issue=str(tax.loc[itype, "issue_type"]),
+                    owner=str(tax.loc[itype, "owner_function"]),
+                    severity=sev,
+                    count=len(g),
+                    previous=n_prev,
+                    trend=trend_arrow(len(g), n_prev),
+                    quotes=[redact(t[:200]) for t in g.sort_values("conf", ascending=False)["text"].drop_duplicates().head(2)],
+                )
+            )
+        top.sort(key=lambda t: (-C.SEV_RANK[t["severity"]], -t["count"], t["issue_type"]))
+        history = self.flags[self.flags["store_id"] == store_id].sort_values("as_of_week_start")
+        series = [int(self._store_week_actionable.get((store_id, w), 0)) for w in self.weeks]
+        return dict(
+            store_id=store_id,
+            name=self.store_name[store_id],
+            region=self.store_region[store_id],
+            week=week,
+            reports_this_week=len(cur),
+            reports_previous_week=len(before),
+            top=top[:5],
+            weeks=self.weeks,
+            weekly_reports=series,
+            flags_this_week=[f for f in self.flags_for(week) if f["store_id"] == store_id],
+            flag_history=[
+                dict(week=f.as_of_week_start, issue=str(tax.loc[f.issue_type_id, "issue_type"])) for f in history.itertuples()
+            ],
         )
 
     def classify(self, text: str, channel: str) -> dict:

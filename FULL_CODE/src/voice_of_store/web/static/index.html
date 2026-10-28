@@ -13,6 +13,8 @@
   <nav role="tablist" aria-label="Views">
     <button role="tab" data-view="brief" aria-selected="true">Weekly brief</button>
     <button role="tab" data-view="emerging" aria-selected="false">Emerging issues</button>
+    <button role="tab" data-view="stores" aria-selected="false">Stores</button>
+    <button role="tab" data-view="ask" aria-selected="false">Ask</button>
     <button role="tab" data-view="try" aria-selected="false">Try a comment</button>
     <button role="tab" data-view="precision" aria-selected="false">Precision</button>
   </nav>
@@ -30,6 +32,22 @@
     <div class="controls"><label>Week <select id="eweek"></select></label></div>
     <p class="sub">A flag means a store reports an issue type clearly above its own normal rate, with at least two reports this week. At most three flags a week.</p>
     <div id="flags" aria-live="polite"></div>
+  </section>
+  <section id="view-stores" hidden>
+    <div class="controls">
+      <label>Store <select id="store"></select></label>
+      <label>Week <select id="sweek"></select></label>
+    </div>
+    <div id="storeview" aria-live="polite"></div>
+  </section>
+  <section id="view-ask" hidden>
+    <p class="sub">Ask about a store, a region, emerging issues, who owns an issue or the escalation rule. Answers come from the weekly briefs (this is not an AI model; nothing you type is sent anywhere else). Start with "classify:" to label a comment.</p>
+    <div id="chat" role="log" aria-live="polite" aria-label="Conversation"></div>
+    <div id="chips" class="chips"></div>
+    <form id="askform">
+      <label>Your question <input id="question" type="text" maxlength="300" autocomplete="off" placeholder="e.g. How is Kothrud doing?"></label>
+      <button class="btn" type="submit">Ask</button>
+    </form>
   </section>
   <section id="view-try" hidden>
     <form id="tryform">

@@ -78,17 +78,75 @@ async function showPrecision() {
     el("p", {class: "sub"}, "Trained on labelled rows of weeks 1-9, tested on labelled rows of weeks 10-13. The labelled sample over-represents rare issue types, so these describe the sample, not the whole stream. Feedback is unverified."));
 }
 
+function weekBars(weeks, values, flagged) {
+  const w = 520, h = 80, n = weeks.length, bw = w / n, max = Math.max(1, ...values);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 " + w + " " + h); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Actionable reports per week at this store");
+  values.forEach((c, i) => {
+    const r = document.createElementNS(svg.namespaceURI, "rect"), bh = (c / max) * (h - 14);
+    r.setAttribute("x", i * bw + 1); r.setAttribute("y", h - bh - 12); r.setAttribute("width", Math.max(1, bw - 2)); r.setAttribute("height", bh);
+    r.setAttribute("class", flagged.includes(weeks[i]) ? "flag" : "barS");
+    const t = document.createElementNS(svg.namespaceURI, "title"); t.textContent = weeks[i] + ": " + c; r.append(t); svg.append(r);
+  });
+  return svg;
+}
+
+async function showStore() {
+  const o = await api("/api/store?store_id=" + encodeURIComponent($("store").value) + "&week=" + encodeURIComponent($("sweek").value));
+  const flagged = o.flag_history.map((f) => f.week);
+  const cards = o.top.map((t) => el("section", {class: "card sev-" + t.severity},
+    el("h2", {}, t.issue, el("span", {class: "trend"}, t.trend)),
+    el("div", {class: "meta"}, el("b", {}, t.owner), " · severity ", el("b", {}, t.severity), " · " + t.count + " reports (" + t.previous + " last week)"),
+    el("ul", {}, ...t.quotes.map((q) => el("li", {}, "“" + q + "”")))));
+  $("storeview").replaceChildren(
+    el("h2", {}, o.name + " · " + o.region),
+    el("div", {class: "meta"}, o.reports_this_week + " actionable reports this week, " + o.reports_previous_week + " the week before"),
+    weekBars(o.weeks, o.weekly_reports, flagged),
+    el("div", {class: "meta"}, "Bars: actionable reports per week (red = a week with an emerging-issue flag at this store)."),
+    o.flags_this_week.length ? el("div", {class: "em"}, "Emerging this week: " + o.flags_this_week.map((f) => f.issue).join(", ")) : "",
+    ...(cards.length ? cards : [el("p", {}, "No actionable issues this week.")]),
+    o.flag_history.length ? el("div", {class: "meta"}, "Flag history: " + o.flag_history.map((f) => f.week + " " + f.issue).join(" · ")) : "");
+}
+
+function say(role, text, items) {
+  const box = el("div", {class: "msg " + role}, el("div", {}, text));
+  (items || []).forEach((it) => box.append(el("div", {class: "item"}, el("b", {}, it.title), ...it.lines.map((l) => el("div", {class: "meta"}, l)))));
+  $("chat").append(box); $("chat").scrollTop = $("chat").scrollHeight; return box;
+}
+
+async function ask(message) {
+  say("me", message);
+  try {
+    const r = await api("/api/assistant", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message})});
+    const box = say("bot", r.reply, r.items);
+    if (r.source) box.append(el("div", {class: "meta"}, "Source: " + r.source + (r.week ? ", week of " + r.week : "")));
+  } catch (e) { say("bot", "That did not work (" + e.message + "). Please try again in a moment."); }
+}
+
+function setupAsk(suggestions) {
+  $("chips").replaceChildren(...suggestions.map((s) => { const b = el("button", {type: "button", class: "chip"}, s); b.addEventListener("click", () => ask(s)); return b; }));
+  $("askform").addEventListener("submit", (ev) => { ev.preventDefault(); const q = $("question").value.trim(); if (q) { $("question").value = ""; ask(q); } });
+  say("bot", "Hello. Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule.");
+}
+
 async function init() {
   META = await api("/api/meta");
   fill($("region"), META.regions); fill($("week"), META.test_weeks); fill($("eweek"), META.test_weeks);
+  fill($("store"), META.stores.map((s) => s.id), (id) => META.stores.find((s) => s.id === id).name + " (" + META.stores.find((s) => s.id === id).region + ")");
+  fill($("sweek"), META.weeks); $("sweek").value = META.weeks[META.weeks.length - 1];
+  $("store").addEventListener("change", () => showStore().catch(showErr)); $("sweek").addEventListener("change", () => showStore().catch(showErr));
+  setupAsk(["What are the top issues in the South region this week?", "Any emerging issues this week?", "How is Kothrud doing?", "Who handles refrigeration problems?", "What is the escalation rule?", "How accurate is this?"]);
   fill($("channel"), META.channels); $("week").value = META.test_weeks[META.test_weeks.length - 1]; $("eweek").value = $("week").value;
   $("rule").textContent = META.escalation_rule;
   $("region").addEventListener("change", showBrief); $("week").addEventListener("change", showBrief); $("eweek").addEventListener("change", showFlags);
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b ? "true" : "false"));
-    for (const v of ["brief", "emerging", "try", "precision"]) $("view-" + v).hidden = v !== b.dataset.view;
+    for (const v of ["brief", "emerging", "stores", "ask", "try", "precision"]) $("view-" + v).hidden = v !== b.dataset.view;
     if (b.dataset.view === "emerging") showFlags().catch(showErr);
     if (b.dataset.view === "precision") showPrecision().catch(showErr);
+    if (b.dataset.view === "stores") showStore().catch(showErr);
+    if (b.dataset.view === "ask") $("question").focus();
   }));
   $("tryform").addEventListener("submit", async (ev) => {
     ev.preventDefault();

@@ -22,3 +22,7 @@ Setup (before the jury): `pip install -r FULL_CODE/requirements.txt`, put the pa
 Questions to be ready for: why no LLM (cost, privacy, a 10-minute CPU limit, reproducibility); how the as-of rule is enforced (test
 that later rows cannot change a week's flags, and a disguised-copy re-run); what happens at a store with few reports (shrinkage
 toward the chain rate, and a flag needs two reports).
+
+## Stores and Ask tabs (45 s)
+- **Stores:** pick a store: this week vs last, weekly trend, flags and top issues with quotes. Faster than scanning a regional brief when a manager asks "what about my store?"
+- **Ask:** type "How is <locality> doing?", "Any emerging issues in South?", "Who handles payment failures?" or "How accurate is this?". Say plainly: it is rule-based, no LLM, no data leaves the machine; unknown questions get an honest "I can't tell".

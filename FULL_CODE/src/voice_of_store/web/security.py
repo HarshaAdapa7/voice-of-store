@@ -44,6 +44,7 @@ class SecurityConfig:
     max_text_chars: int = 2000
     rate_per_minute: int = 120  # all endpoints, per client address
     classify_per_minute: int = 20  # the one POST endpoint
+    assistant_per_minute: int = 40  # POST /api/assistant
     max_tracked_clients: int = 5000
     api_key: str | None = None  # when set, /api/classify requires header X-API-Key
     auth_user: str | None = None  # when set together with auth_hash, every page and API route needs HTTP Basic auth
@@ -165,7 +166,10 @@ def _post_checks(cfg: SecurityConfig, limiter: RateLimiter, client: str) -> Resp
         return _err(403, "cross-site request refused")
     if request.mimetype != "application/json":
         return _err(415, "content type must be application/json")
-    if not limiter.allow(client, "classify", cfg.classify_per_minute):
+    bucket, limit = (
+        ("assistant", cfg.assistant_per_minute) if request.path == "/api/assistant" else ("classify", cfg.classify_per_minute)
+    )
+    if not limiter.allow(client, bucket, limit):
         resp = _err(429, "too many classify requests")
         resp.headers["Retry-After"] = "60"
         return resp
@@ -227,7 +231,9 @@ def _register_errors(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def _unhandled(exc: Exception) -> Response:
-        log.error("unhandled %s id=%s", type(exc).__name__, g.get("request_id", "-"))  # type only, never the message
+        log.error(
+            "unhandled %s id=%s", type(exc).__name__, g.get("request_id", "-"), exc_info=log.isEnabledFor(logging.DEBUG)
+        )  # type only, never the message
         return _err(500, "internal error")
 
 

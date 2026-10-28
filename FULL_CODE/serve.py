@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -71,6 +72,7 @@ def main() -> None:
         state = AppState(Path(a.data), Path(a.submission))
     except (DataError, ValueError, FileNotFoundError) as exc:
         raise SystemExit(f"error: {exc}") from None
+    threading.Thread(target=state.warm, name="warm-briefs", daemon=True).start()
     log.info("serving on http://%s:%d", a.host, a.port)
     run_server(create_app(state, cfg), a.host, a.port)
 

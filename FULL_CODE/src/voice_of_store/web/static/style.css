@@ -18,3 +18,10 @@ footer{color:var(--mut);font-size:12px;margin-top:24px;border-top:1px solid var(
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--bd);padding:4px 6px;text-align:left}
 @media (max-width:520px){body{padding:10px}}
 @media print{nav,.controls,footer{display:none}}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{font:inherit;font-size:13px;color:var(--acc);background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:4px 10px;cursor:pointer}
+.chip:hover{border-color:var(--acc)}#chat{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;padding:4px 0}
+.msg{max-width:92%;padding:8px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--card);white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.me{align-self:flex-end;border-color:var(--acc)}.msg .item{margin-top:6px;padding-top:6px;border-top:1px dashed var(--bd)}
+input[type=text]{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;width:100%}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}

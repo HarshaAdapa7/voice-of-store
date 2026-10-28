@@ -4,7 +4,7 @@ This page states what the web demo defends against, how, and what it does not do
 `FULL_CODE/src/voice_of_store/web/`. The detector and classifier (`detect.py`, `make_submission.py`) have no network code at all.
 
 ## What the app is
-A read-only analytics page over synthetic data plus one stateless endpoint (`POST /api/classify`). It has no accounts, no
+A read-only analytics page over synthetic data plus two stateless POST endpoints (`/api/classify` and the store assistant `/api/assistant`). It has no accounts, no
 cookies, no database, no uploads and no file writes. It makes no outbound network calls. No LLM or external API is used.
 
 ## Threat model and controls
@@ -16,7 +16,7 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 | MIME sniffing | `X-Content-Type-Options: nosniff`; JSON responses carry `application/json` | headers test |
 | DNS rebinding and host-header attacks against a localhost server | Host allow-list (`127.0.0.1`, `localhost`, `[::1]` plus `R5_ALLOWED_HOSTS`) | `test_host_header_attack_refused` |
 | Cross-site requests (CSRF) | The only state-free POST requires `Content-Type: application/json` (a cross-site form cannot send it without a CORS pre-flight, and OPTIONS is refused with 405); `Origin` must be an allowed host; `Sec-Fetch-Site` must be same-origin or none; there are no cookies or sessions to ride on | `test_cross_site_post_refused`, `test_content_type_and_method_rules`, `test_no_cookies_set` |
-| Resource exhaustion | Body limit 8 KiB (waitress 16 KiB); text limit 2,000 characters; per-client rate limits (120 requests a minute, 20 classify a minute) with bounded memory; waitress channel timeout 30 s; a stateless classifier of fixed cost | rate-limit and oversize tests |
+| Resource exhaustion | Body limit 8 KiB (waitress 16 KiB); text limit 2,000 characters; per-client rate limits (120 requests a minute, 20 classify a minute, 40 assistant questions a minute) with bounded memory; waitress channel timeout 30 s; a stateless classifier of fixed cost | rate-limit and oversize tests |
 | Injection and path traversal | Every query value must be in an allow-list built at start-up (regions, weeks, store ids, issue types, channels); static files come from a fixed table of three names, never from the URL; no SQL, no shell, no `eval`, no template rendering of user input | `test_query_parameters_use_allow_lists`, `test_only_allow_listed_static_files` |
 | Information leaks through errors | One generic JSON error handler; exception messages and stack traces are never returned; each error carries a random request id for support | `test_errors_do_not_leak_internals` |
 | Personal data in logs | The app's own log lines hold method, path, status, duration and request id only: never query values, request bodies or feedback text. (The Flask development server also writes its own access line with the request path and query string; those values are restricted to the allow-lists, and POST bodies are never logged. waitress does not write access logs by default.) Texts shown to a person pass through `redact()` (emails, phone numbers, long digit runs) | `test_logs_contain_no_user_text`, `test_redact_and_clean_input` |
@@ -50,3 +50,10 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 
 ## Reporting
 Open an issue on the team repository or contact the team lead. Do not post exploit details publicly.
+
+## Store assistant (`POST /api/assistant`)
+- **No LLM, no outbound calls.** It is a deterministic, rule-based assistant: it matches the question to an intent (brief, store, emerging, owner, escalation, accuracy, classify) and reads answers from the same in-memory data as the dashboard. There is no prompt, so there is nothing to prompt-inject; instruction-like text is treated as an unknown question.
+- Body must be exactly `{"message": "<string>"}` (1-300 characters, no extra fields); same JSON-only, Origin, Sec-Fetch-Site, rate-limit (own bucket) and login checks as the classify endpoint.
+- Replies are built from fixed templates and data values, never from the question text; the UI renders them with `textContent`. Questions are not logged.
+- `GET /api/store` uses the same allow-lists as the other query endpoints (store id and week must be in the start-up lists).
+- Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (25 checks, run against this build: all passed).

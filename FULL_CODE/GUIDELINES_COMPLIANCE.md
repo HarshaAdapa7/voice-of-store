@@ -17,7 +17,7 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 | 2 | Database schema and seed files; no DB files committed | N/A | No database is used (CSV in, CSV and HTML out). |
 | 3 | No secrets in code; `.env.example` committed; `.env` ignored | Met | `.env.example` lists every variable with dummy or commented values; `.gitignore` lists `.env`; `package_check.py` scans for secret-like strings. No keys exist in the project. |
 | 3 | Never print secrets or personal records in logs or errors | Met | Logs hold method, path, status, time and request id only; errors are generic; `redact()` masks contact details before display (`test_logs_contain_no_user_text`, `test_errors_do_not_leak_internals`). |
-| 4 | Validate every input (users, files, APIs) | Met | Web: allow-lists, type, length and shape checks (`test_classify_rejects_bad_input`, `test_query_parameters_use_allow_lists`). Files: `io.load_data` checks columns, ids, timestamps, enums (`test_load_data_rejects_bad_files_with_clear_message`). CLI: dates (`monday_of`). |
+| 4 | Validate every input (users, files, APIs) | Met | Web: allow-lists, type, length and shape checks (`test_classify_rejects_bad_input`, `test_query_parameters_use_allow_lists`, `test_assistant_endpoint_validates_input`, `test_store_endpoint_uses_allow_lists`). Files: `io.load_data` checks columns, ids, timestamps, enums (`test_load_data_rejects_bad_files_with_clear_message`). CLI: dates (`monday_of`). |
 | 4 | Parameterised queries | N/A | No SQL. |
 | 4 | Server-side permission checks | Met | Optional login on every page and API route, plus an API key for the POST endpoint; checked on the server, not hidden in the UI (`test_login_protects_every_page_and_api`). |
 | 4 | Restrict CORS, debug off, certificate checks on | Met | No CORS headers are sent (same-origin only; cross-origin POSTs are refused); `debug=False`; the app makes no outbound calls. |
@@ -32,7 +32,7 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 | 8 | Specific exceptions; no silent swallowing | Met | `DataError`, `NotEnoughLabels` are caught at the entry points and shown as `error: ...` without a traceback (`test_detector_cli_reports_problems_without_traceback`). The one catch-all is the web error handler, which logs the exception type and returns a generic message. No `except: pass`. |
 | 8 | Timeouts, retries, fallbacks for network calls | N/A | There are no network, database or API calls. The server sets a channel timeout (waitress) and a body limit. |
 | 8 | Logging library, not print | Met | `logging` throughout (`logs.py`, level from `R5_LOG_LEVEL`). |
-| 9 | LLM and AI API rules | N/A | No LLM is used at run time. The model is a classical linear classifier; no prompts, no external calls. |
+| 9 | LLM and AI API rules | N/A | No LLM is used at run time, including the store assistant, which is rule-based (`assistant.py`): no prompts, no external calls, no user text sent anywhere. |
 | 10 | Agent and MCP rules | N/A | No agents, tools or MCP servers in the product. |
 | 11 | Fixed seeds, no leakage, time-based split | Met | `SEED` in `config.py`; validation trains on weeks 1-9 and tests on weeks 10-13 (`report.time_split_validation`); at run time the classifier sees only labels dated before the as-of cutoff (`test_future_rows_do_not_change_flags`). |
 | 11 | Baseline comparison, suitable metrics | Met | Macro-F1, weighted-F1, actionable F1 and precision with intervals; organisers' baseline quoted in the README. |
@@ -61,4 +61,5 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 - `pip-audit` and the `waitress` production-server path were not run (no internet in the build sandbox).
 - The Dockerfile was written and reviewed but not built.
 - Python 3.9 was not available to test; the code avoids newer syntax but was run on 3.13 only.
-- No independent security test; the controls are checked by this project's own tests.
+- No independent security test; the controls are checked by this project's own tests and by `scripts/security_probe.py` against a running instance.
+- `mypy` is clean and 112 tests pass on Python 3.13 in the build sandbox.

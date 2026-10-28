@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from voice_of_store import config as C
-from voice_of_store.brief import _severity_rank, _tier, _trend, build_region_week, render_html
+from voice_of_store.brief import _tier, build_region_week, render_html, severity_rank, trend_arrow
 from voice_of_store.classify import FeedbackClassifier, NotEnoughLabels
 from voice_of_store.detect import expected_counts, run_statistic, weekly_counts
 from voice_of_store.evidence import belongs
@@ -159,9 +159,9 @@ def test_classifier_needs_labels_and_handles_odd_text(data_dir):
 
 # ---- brief and routing ----------------------------------------------------------------------------------------------
 def test_trend_boundaries():
-    assert _trend(5, 4) == "→" and _trend(5, 3) == "↑" and _trend(3, 5) == "↓" and _trend(0, 0) == "→"
-    assert _trend(20, 18) == "→"  # +2 but under 25%: noise
-    assert _trend(10, 8) == "↑"  # exactly +25% and +2 counts as a rise
+    assert trend_arrow(5, 4) == "→" and trend_arrow(5, 3) == "↑" and trend_arrow(3, 5) == "↓" and trend_arrow(0, 0) == "→"
+    assert trend_arrow(20, 18) == "→"  # +2 but under 25%: noise
+    assert trend_arrow(10, 8) == "↑"  # exactly +25% and +2 counts as a rise
 
 
 def test_tier_and_severity_rules():
@@ -172,8 +172,8 @@ def test_tier_and_severity_rules():
     three_stores = pd.DataFrame({"store": ["S1", "S2", "S3"], "channel": ["in_app"] * 3, "text": ["a", "b", "c"]})
     assert _tier(three_stores) == "POSSIBLE SYSTEMIC"
     sev = pd.Series(["low"] * 9 + ["critical"])
-    assert _severity_rank("IT10", sev) == C.SEV_RANK["critical"]  # safety type: worst report counts
-    assert _severity_rank("IT14", sev) == C.SEV_RANK["low"]  # others: one outlier does not decide
+    assert severity_rank("IT10", sev) == C.SEV_RANK["critical"]  # safety type: worst report counts
+    assert severity_rank("IT14", sev) == C.SEV_RANK["low"]  # others: one outlier does not decide
 
 
 def test_action_window_policy():

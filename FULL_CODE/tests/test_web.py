@@ -61,6 +61,15 @@ class StubState:
     def validation(self):
         return dict(n_pred_actionable=1)
 
+    def store_overview(self, store_id, week):
+        return dict(store_id=store_id, week=week, name="Saffron Market Test", region=REGION, top=[], weeks=self.weeks)
+
+    def store_ids_in_text(self, text):
+        return []
+
+    def issue_catalogue(self):
+        return []
+
     def classify(self, text, channel):
         if text == "boom":
             raise RuntimeError("secret internal detail /etc/passwd")
@@ -331,6 +340,52 @@ def test_exposure_rules(monkeypatch):
     serve.check_exposure("0.0.0.0", https_login)  # noqa: S104
 
 
+def test_assistant_endpoint_validates_input(client):
+    ok = client.post("/api/assistant", json={"message": "hello"})
+    assert ok.status_code == 200 and ok.get_json()["intent"] == "help"
+    for body in [
+        {},
+        {"message": ""},
+        {"message": "  "},
+        {"message": 5},
+        {"message": "x" * 301},
+        {"message": "hi", "extra": 1},
+        [],
+        "text",
+    ]:
+        assert client.post("/api/assistant", json=body).status_code == 400, body
+    assert client.post("/api/assistant", data="message=hi", headers={"Content-Type": "text/plain"}).status_code == 415
+    assert client.post("/api/assistant", json={"message": "hi"}, headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_assistant_has_its_own_rate_limit():
+    c = make(assistant_per_minute=3, classify_per_minute=100, rate_per_minute=100)
+    codes = [c.post("/api/assistant", json={"message": "hello"}).status_code for _ in range(5)]
+    assert codes == [200, 200, 200, 429, 429]
+    assert c.post("/api/classify", json=dict(text="hello", channel="in_app")).status_code == 200  # buckets are separate
+
+
+def test_assistant_and_store_need_login_when_configured():
+    c = _auth_client()
+    assert c.post("/api/assistant", json={"message": "hello"}).status_code == 401
+    assert c.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": WEEK}).status_code == 401
+    good = _basic("judge", "correct horse battery")
+    assert c.post("/api/assistant", json={"message": "hello"}, headers=good).status_code == 200
+
+
+def test_store_endpoint_uses_allow_lists(client):
+    assert client.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": WEEK}).status_code == 200
+    for sid in ["", "ST-ZZZZZ", "../x", "ST-ABCDE' OR 1=1", "x" * 500]:
+        assert client.get("/api/store", query_string={"store_id": sid, "week": WEEK}).status_code == 400, sid
+    assert client.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": "2030-01-07"}).status_code == 400
+
+
+def test_logs_never_contain_assistant_questions(client, caplog):
+    with caplog.at_level(logging.DEBUG, logger="voice_of_store.web"):
+        client.post("/api/assistant", json={"message": "how is secret-store-name doing, my phone is 9876543210"})
+    assert "9876543210" not in " ".join(r.getMessage() for r in caplog.records)
+
+
 # ---------------- with the real state (needs data/) ----------------
 @pytest.fixture(scope="module")
 def real(data_dir_module):
@@ -380,3 +435,23 @@ def test_real_flags_match_submission_and_series(real):
             s = c.get("/api/series", query_string={"store_id": f["store_id"], "issue_type": f["issue_type"]}).get_json()
             assert w in s["flagged_weeks"] and len(s["weeks"]) == len(s["store_counts"])
     assert total == int((state.flags["as_of_week_start"] >= state.test_weeks[0]).sum())
+
+
+def test_real_store_page_and_assistant(real):
+    state, c = real
+    store = state.flags["store_id"].iloc[0]
+    o = c.get("/api/store", query_string={"store_id": store, "week": state.weeks[-1]}).get_json()
+    assert o["store_id"] == store and len(o["weekly_reports"]) == len(o["weeks"]) and o["reports_this_week"] >= 0
+    name = state.store_name[store].split(" ", 2)[2]
+    r = c.post("/api/assistant", json={"message": f"How is {name} doing?"}).get_json()
+    assert r["intent"] == "store" and state.store_name[store] in r["reply"]
+    r = c.post("/api/assistant", json={"message": "Any emerging issues this week?"}).get_json()
+    assert r["intent"] == "emerging" and r["week"] == state.weeks[-1]
+    r = c.post("/api/assistant", json={"message": "classify: frzr 3 not cooling since morning, ice cream melting"}).get_json()
+    assert r["intent"] == "classify" and "IT10" in r["reply"]
+
+
+def test_warm_up_fills_the_brief_cache(real):
+    state, _ = real
+    state.warm()
+    assert len(state._brief_cache) == len(state.regions) * len(state.test_weeks)

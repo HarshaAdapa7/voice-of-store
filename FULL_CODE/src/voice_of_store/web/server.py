@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, request, send_file
 
+from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
 from ..routing import ESCALATION_RULE
 from .security import SecurityConfig, install
@@ -47,6 +47,7 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     types = {t["id"] for t in meta["issue_types"]}
     stores = {s["id"] for s in meta["stores"]}
     regions, weeks = set(state.regions), set(state.weeks)
+    assistant = Assistant(state)
 
     @app.get("/api/health")
     def health():
@@ -79,6 +80,20 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     def get_validation():
         return jsonify(state.validation())
 
+    @app.get("/api/store")
+    def get_store():
+        return jsonify(state.store_overview(_arg("store_id", stores, _ID), _arg("week", weeks, _DATE)))
+
+    @app.post("/api/assistant")
+    def post_assistant():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or set(body) != {"message"}:
+            abort(400)
+        message = body["message"]
+        if not isinstance(message, str) or not message.strip() or len(message) > MAX_QUESTION_CHARS:
+            abort(400)
+        return jsonify(assistant.ask(message))
+
     @app.post("/api/classify")
     def post_classify():
         body = request.get_json(silent=True)
@@ -97,5 +112,4 @@ def create_app(state: AppState, cfg: SecurityConfig | None = None) -> Flask:
     install(app, cfg)
     _register_static(app)
     _register_api(app, state, cfg)
-    logging.getLogger("voice_of_store.web").setLevel(logging.INFO)
     return app

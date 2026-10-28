@@ -25,7 +25,7 @@ def _tier(g: pd.DataFrame) -> str:
     return "UNVERIFIED"
 
 
-def _trend(this_n: float, prev_n: float) -> str:
+def trend_arrow(this_n: float, prev_n: float) -> str:
     if this_n - prev_n >= 2 and this_n >= 1.25 * prev_n:
         return "↑"
     if prev_n - this_n >= 2 and this_n <= 0.75 * prev_n:
@@ -33,7 +33,7 @@ def _trend(this_n: float, prev_n: float) -> str:
     return "→"
 
 
-def _severity_rank(itype: str, severities: pd.Series) -> int:
+def severity_rank(itype: str, severities: pd.Series) -> int:
     """Safety types keep the worst report (policy: never averaged away); other types use the 75th percentile so one
     outlier report does not set the severity of a whole group."""
     ranks = sorted(C.SEV_RANK[s] for s in severities)
@@ -43,7 +43,7 @@ def _severity_rank(itype: str, severities: pd.Series) -> int:
 
 
 def _issue_entry(itype: str, g: pd.DataFrame, prev_count: int, emerging: list[str], names: dict, taxonomy: pd.DataFrame) -> dict:
-    sev_rank = _severity_rank(itype, g["severity"])
+    sev_rank = severity_rank(itype, g["severity"])
     sev = C.SEVERITIES[sev_rank]
     tier = _tier(g)
     per_store = g.groupby("store").size().sort_values(ascending=False)
@@ -58,7 +58,7 @@ def _issue_entry(itype: str, g: pd.DataFrame, prev_count: int, emerging: list[st
         channels=g["channel"].nunique(),
         n_stores=g["store"].nunique(),
         stores=[(names[s], int(n)) for s, n in per_store.head(4).items()],
-        trend=_trend(len(g), prev_count),
+        trend=trend_arrow(len(g), prev_count),
         prev_count=prev_count,
         emerging=[names[s] for s in emerging],
         window=action_window(sev, itype, bool(emerging)),

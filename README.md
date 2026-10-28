@@ -19,7 +19,10 @@ Hinglish, Tamil and Marathi (all in Latin script). This project:
 4. **States precision**: out-of-sample, with intervals (`out/validation.md`).
 5. **Runs as a secure web demo** (`FULL_CODE/serve.py`): regional briefs, emerging-issue panel with weekly chart and evidence,
    a "try a comment" box with the key terms behind the prediction, the precision statement, and cross-channel de-duplication
-   (reports of one event at the same store and type within 72 hours are shown as one incident).
+   (reports of one event at the same store and type within 72 hours are shown as one incident). A **Stores** tab gives a
+   per-store page (this week vs last, weekly trend, flags, top issues with quotes), and an **Ask** tab is a store assistant
+   ("How is Kothrud doing?", "Any emerging issues in South?", "Who handles freezer problems?", "classify: ..."). The assistant
+   is rule-based, not an LLM: it only reads this project's own data, cites its source, and says so when it cannot answer.
 
 Users: regional ops heads and function owners (Store Ops, Supply Chain, Merchandising, Digital, HR).
 
@@ -118,13 +121,13 @@ unchanged, and a disguised copy (new ids, dates shifted by 7 weeks) gives the sa
 
 ## Security
 
-The web demo is read-only over synthetic data plus one stateless classify endpoint: no accounts, cookies, database, uploads
+The web demo is read-only over synthetic data plus two stateless POST endpoints (classify and the rule-based assistant, 300-character questions, own rate limit): no accounts, cookies, database, uploads
 or outbound calls. Controls (each has a test in `tests/test_web.py`): strict Content-Security-Policy with no inline script,
 DOM built with `textContent` only, escaped printable brief, host allow-list (DNS rebinding), origin and fetch-metadata checks plus
 JSON-only POST (CSRF), allow-lists for every query value, fixed static-file table (no path traversal), body and text size
 limits, per-client rate limits with bounded memory, optional login (salted scrypt hash, failed-login limiter) and constant-time API key, generic errors with request ids,
 logs without feedback text, contact details masked before display, HSTS when behind HTTPS, no pickle anywhere, non-root
-container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (a single shared login, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. Before exposing it, run
+container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (a single shared login, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. With the server running, `python FULL_CODE/scripts/security_probe.py` fires 25 attacks at it (25/25 refused or neutralised in the build check). Before exposing it, run
 `pip-audit -r FULL_CODE/requirements.txt` (needs internet) and put it behind a TLS-terminating reverse proxy.
 
 ## Results (what was measured, and what it means)
