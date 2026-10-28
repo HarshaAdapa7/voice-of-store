@@ -20,6 +20,7 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 | Injection and path traversal | Every query value must be in an allow-list built at start-up (regions, weeks, store ids, issue types, channels); static files come from a fixed table of three names, never from the URL; no SQL, no shell, no `eval`, no template rendering of user input | `test_query_parameters_use_allow_lists`, `test_only_allow_listed_static_files` |
 | Information leaks through errors | One generic JSON error handler; exception messages and stack traces are never returned; each error carries a random request id for support | `test_errors_do_not_leak_internals` |
 | Personal data in logs | The app's own log lines hold method, path, status, duration and request id only: never query values, request bodies or feedback text. (The Flask development server also writes its own access line with the request path and query string; those values are restricted to the allow-lists, and POST bodies are never logged. waitress does not write access logs by default.) Texts shown to a person pass through `redact()` (emails, phone numbers, long digit runs) | `test_logs_contain_no_user_text`, `test_redact_and_clean_input` |
+| Unauthorised access to the data pages and API | Optional login for every page and API route (`R5_AUTH_USER` + `R5_AUTH_HASH`, a salted scrypt hash made by `scripts/make_auth_hash.py`; the password is never stored or logged); user-name and password are checked in constant time with a dummy hash for unknown users; failed logins are limited to 10 a minute per client; the server refuses to expose a login over plain HTTP unless `R5_HTTPS=1`; `/api/health` stays open for container health checks and returns no data | `test_login_*`, `test_failed_logins_are_rate_limited`, `test_exposure_rules` |
 | Abuse of the classify endpoint | Optional `R5_API_KEY` (header `X-API-Key`, compared in constant time); the server refuses to start on a non-loopback address unless `R5_ALLOWED_HOSTS` is set, and warns if no API key is set | `test_api_key_when_configured` |
 | Spoofed client address behind a proxy | `X-Forwarded-For` is ignored unless `R5_TRUST_PROXY=1`; when trusted, only the last (proxy-added) entry is used | `test_forwarded_header_ignored...` |
 | Downgrade to plain HTTP | `Strict-Transport-Security` is added when `R5_HTTPS=1` (set only when TLS is terminated in front of the app) | `test_hsts_only_when_declared_https` |
@@ -34,13 +35,14 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 | Variable | Meaning |
 |---|---|
 | `R5_ALLOWED_HOSTS` | Comma-separated public host names accepted in the `Host` header (required to expose the app) |
+| `R5_AUTH_USER`, `R5_AUTH_HASH` | Turn on the login (both or neither). Make the hash with `python FULL_CODE/scripts/make_auth_hash.py <user>` |
 | `R5_API_KEY` | When set, `POST /api/classify` needs the header `X-API-Key: <value>` |
 | `R5_HTTPS` | `1` when TLS is terminated in front of the app: adds HSTS |
 | `R5_TRUST_PROXY` | `1` only behind a trusted reverse proxy: use its `X-Forwarded-For` for rate limiting |
 
 ## What this does NOT do (read before exposing it)
-- It has no user authentication. Read-only endpoints are open to anyone who can reach the port. If the data were real, put it
-  behind SSO or a reverse proxy with authentication. The demo data is synthetic.
+- Authentication is one shared login (or none, by default on localhost). There are no user accounts, roles, password reset or
+  single sign-on. If the data were real, use SSO behind a reverse proxy. The demo data is synthetic.
 - It does not terminate TLS. Use a reverse proxy (Caddy, nginx, a cloud load balancer) for HTTPS when it leaves localhost.
 - Rate limits live in process memory and are per worker. Behind several workers use the proxy's limits as well.
 - It has not had an independent penetration test. The tests above check each stated control; they do not prove absence of flaws.

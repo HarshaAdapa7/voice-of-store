@@ -7,6 +7,7 @@ Incident shapes (reports per week from onset): the public worked example's rise 
 and a slower ramp. The naive week uses the pack's definition. This is a sanity harness on synthetic injections, not a
 claim about the hidden incidents. Runs the statistic only (the classifier is trained once for the clean history).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +32,7 @@ SHAPES = {"worked_example": [1, 3, 5, 25, 10, 5, 3], "burst": [2, 9, 22, 10, 4],
 def naive_week(chain: np.ndarray, onset: int) -> int | None:
     """First week >= onset whose chain count exceeds mean + 3*max(sd, sqrt(mean), 1) of the previous up-to-8 weeks."""
     for w in range(max(onset, 2), len(chain)):
-        h = chain[max(0, w - 8):w]
+        h = chain[max(0, w - 8) : w]
         mu, sd = h.mean(), h.std()
         if chain[w] > mu + 3 * max(sd, np.sqrt(mu), 1):
             return w
@@ -92,7 +93,9 @@ def main() -> None:
     for g in grids:
         fpw, bands, mean_lead = run(counts, foot, g, a.n, a.seed)
         flood = min(1.0, 3.0 / fpw) if fpw > 0 else 1.0
-        print(f"{g}  clean flags/wk {fpw:.2f}  lead score {mean_lead:.3f} x flood {flood:.2f} = {mean_lead * flood:.3f}  by band {bands}")
+        print(
+            f"{g}  clean flags/wk {fpw:.2f}  lead score {mean_lead:.3f} x flood {flood:.2f} = {mean_lead * flood:.3f}  by band {bands}"
+        )
 
 
 if __name__ == "__main__":

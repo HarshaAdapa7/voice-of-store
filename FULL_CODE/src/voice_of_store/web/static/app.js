@@ -97,10 +97,10 @@ async function init() {
         body: JSON.stringify({text: $("text").value, channel: $("channel").value})});
       $("result").replaceChildren(el("section", {class: "card sev-" + r.severity},
         el("h2", {}, r.issue_type + " · " + r.issue),
-        el("div", {class: "meta"}, "owner " + r.owner + " · severity " + r.severity + " · actionable " + (r.actionable ? "yes" : "no") + " · confidence " + r.confidence),
+        el("div", {class: "meta"}, "owner " + r.owner + " · severity " + r.severity + " · actionable " + (r.actionable ? "yes" : "no") + " · confidence score " + r.confidence),
         r.store_named ? el("div", {class: "meta"}, "store named in text: " + r.store_named) : "",
         r.note ? el("div", {class: "meta"}, r.note) : "",
-        el("div", {class: "meta"}, "other candidates: " + r.alternatives.map((a) => a.issue_type + " " + a.probability).join(", ")),
+        el("div", {class: "meta"}, "other candidates: " + r.alternatives.map((a) => a.issue_type + " " + a.score).join(", ")),
         el("div", {}, ...r.key_terms.map((t) => el("span", {class: "tag"}, t.term)))));
     } catch (e) { showErr(e); }
   });

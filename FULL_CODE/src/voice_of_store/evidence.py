@@ -1,4 +1,5 @@
 """Evidence selection. Re-implements the scorer's checks (a) to (d) so every cited id is one the scorer will accept."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -14,8 +15,15 @@ def belongs(row_store: object, row_text: str, store_id: str, loc: dict) -> bool:
     return loc[store_id] in str(row_text).lower()
 
 
-def select_evidence(week_rows: pd.DataFrame, store_id: str, itype: str, week_start: str, week_end_excl: str,
-                    resolver: StoreResolver, limit: int = C.EVIDENCE_MAX) -> list[str]:
+def select_evidence(
+    week_rows: pd.DataFrame,
+    store_id: str,
+    itype: str,
+    week_start: str,
+    week_end_excl: str,
+    resolver: StoreResolver,
+    limit: int = C.EVIDENCE_MAX,
+) -> list[str]:
     """Highest-confidence rows of this store, week and predicted type. week_rows has feedback_id, store_id, text,
     created_at, itype, conf."""
     r = week_rows
@@ -26,7 +34,14 @@ def select_evidence(week_rows: pd.DataFrame, store_id: str, itype: str, week_sta
     return ok["feedback_id"].drop_duplicates().head(limit).tolist()
 
 
-def valid_evidence_count(ids: list[str], week_rows: pd.DataFrame, store_id: str, itype: str, week_start: str,
-                         week_end_excl: str, resolver: StoreResolver) -> int:
+def valid_evidence_count(
+    ids: list[str],
+    week_rows: pd.DataFrame,
+    store_id: str,
+    itype: str,
+    week_start: str,
+    week_end_excl: str,
+    resolver: StoreResolver,
+) -> int:
     chosen = select_evidence(week_rows, store_id, itype, week_start, week_end_excl, resolver, limit=10**6)
     return len(set(ids) & set(chosen))

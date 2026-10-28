@@ -1,4 +1,5 @@
 """Application state: data, classifier and predicted rows loaded once at start-up, read-only afterwards."""
+
 from __future__ import annotations
 
 import json
@@ -44,9 +45,13 @@ class AppState:
     # ---- queries (all arguments are validated by the caller against these allow-lists) ----
     def meta(self) -> dict:
         return dict(
-            regions=self.regions, weeks=self.weeks, test_weeks=self.test_weeks,
-            issue_types=[dict(id=r.issue_type_id, name=r.issue_type, owner=r.owner_function, floor=r.policy_severity_floor)
-                         for r in self.types.itertuples()],
+            regions=self.regions,
+            weeks=self.weeks,
+            test_weeks=self.test_weeks,
+            issue_types=[
+                dict(id=r.issue_type_id, name=r.issue_type, owner=r.owner_function, floor=r.policy_severity_floor)
+                for r in self.types.itertuples()
+            ],
             channels=sorted(self.data.feedback["channel"].unique()),
             stores=[dict(id=s, name=n, region=self.store_region[s]) for s, n in self.store_name.items()],
         )
@@ -71,12 +76,23 @@ class AppState:
         by_id = self.rows.set_index("feedback_id")
         for f in self.flags[self.flags["as_of_week_start"] == week].itertuples():
             ids = f.evidence_feedback_ids.split(";")
-            ev = [dict(channel=str(by_id.loc[i, "channel"]), text=redact(str(by_id.loc[i, "text"])[:240])) for i in ids if i in by_id.index]
-            out.append(dict(store_id=f.store_id, store=self.store_name.get(f.store_id, f.store_id),
-                            region=self.store_region.get(f.store_id), issue_type=f.issue_type_id,
-                            issue=str(self.data.taxonomy.loc[f.issue_type_id, "issue_type"]),
-                            owner=str(self.data.taxonomy.loc[f.issue_type_id, "owner_function"]),
-                            confidence=round(float(f.confidence), 3), evidence=ev))
+            ev = [
+                dict(channel=str(by_id.loc[i, "channel"]), text=redact(str(by_id.loc[i, "text"])[:240]))
+                for i in ids
+                if i in by_id.index
+            ]
+            out.append(
+                dict(
+                    store_id=f.store_id,
+                    store=self.store_name.get(f.store_id, f.store_id),
+                    region=self.store_region.get(f.store_id),
+                    issue_type=f.issue_type_id,
+                    issue=str(self.data.taxonomy.loc[f.issue_type_id, "issue_type"]),
+                    owner=str(self.data.taxonomy.loc[f.issue_type_id, "owner_function"]),
+                    confidence=round(float(f.confidence), 3),
+                    evidence=ev,
+                )
+            )
         return out
 
     def series(self, store_id: str, issue_type: str) -> dict:
@@ -84,9 +100,15 @@ class AppState:
         sub = r[(r["store"] == store_id) & (r["itype"] == issue_type)]
         counts = sub.groupby("week").size()
         chain = r[(r["itype"] == issue_type) & r["store"].notna()].groupby("week").size()
-        flagged = self.flags[(self.flags["store_id"] == store_id) & (self.flags["issue_type_id"] == issue_type)]["as_of_week_start"].tolist()
-        return dict(weeks=self.weeks, store_counts=[int(counts.get(w, 0)) for w in self.weeks],
-                    chain_counts=[int(chain.get(w, 0)) for w in self.weeks], flagged_weeks=flagged)
+        flagged = self.flags[(self.flags["store_id"] == store_id) & (self.flags["issue_type_id"] == issue_type)][
+            "as_of_week_start"
+        ].tolist()
+        return dict(
+            weeks=self.weeks,
+            store_counts=[int(counts.get(w, 0)) for w in self.weeks],
+            chain_counts=[int(chain.get(w, 0)) for w in self.weeks],
+            flagged_weeks=flagged,
+        )
 
     def classify(self, text: str, channel: str) -> dict:
         text = clean_input(text, 2000)
@@ -97,14 +119,20 @@ class AppState:
         itype = str(pred["issue_type_id"])
         why = self.clf.explain(df)
         return dict(
-            issue_type=itype, issue=str(self.data.taxonomy.loc[itype, "issue_type"]),
-            owner=str(self.data.taxonomy.loc[itype, "owner_function"]), severity=str(pred["severity"]),
-            actionable=int(pred["actionable"]), confidence=round(float(pred["type_confidence"]), 3),
+            issue_type=itype,
+            issue=str(self.data.taxonomy.loc[itype, "issue_type"]),
+            owner=str(self.data.taxonomy.loc[itype, "owner_function"]),
+            severity=str(pred["severity"]),
+            actionable=int(pred["actionable"]),
+            confidence=round(float(pred["type_confidence"]), 3),
             store_named=self.store_name.get(store) if store else None,
-            alternatives=[dict(issue_type=str(k), probability=round(float(v), 3)) for k, v in proba.items()],
+            alternatives=[dict(issue_type=str(k), score=round(float(v), 3)) for k, v in proba.items()],
             key_terms=[dict(term=t, weight=round(w, 3)) for t, w in why],
-            note=("Not actionable without a store unless it is an order/app/payment/refund/loyalty issue."
-                  if int(pred["actionable"]) == 0 and itype not in C.NON_ISSUE else ""),
+            note=(
+                "Not actionable without a store unless it is an order/app/payment/refund/loyalty issue."
+                if int(pred["actionable"]) == 0 and itype not in C.NON_ISSUE
+                else ""
+            ),
         )
 
     def validation(self) -> dict:

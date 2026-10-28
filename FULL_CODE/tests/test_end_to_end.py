@@ -1,4 +1,5 @@
 """End-to-end checks on the real data folder (skipped when data/ is absent)."""
+
 import shutil
 import subprocess
 import sys
@@ -47,8 +48,11 @@ def test_evidence_passes_scorer_rules(data_dir):  # T25/T26
             r = fb.loc[i]
             same_week = monday_of(week) <= r["created_at"] < end
             lab = rows.set_index("feedback_id").loc[i, "itype"]
-            ok += bool(belongs(r["store_id"] if isinstance(r["store_id"], str) else None, r["text"], f.store_id,
-                               resolver.locality) and same_week and lab == f.issue_type_id)
+            ok += bool(
+                belongs(r["store_id"] if isinstance(r["store_id"], str) else None, r["text"], f.store_id, resolver.locality)
+                and same_week
+                and lab == f.issue_type_id
+            )
         assert ok >= 2
 
 
@@ -80,17 +84,33 @@ def _disguise(src: Path, dst: Path, shift_weeks: int):
 def test_disguised_copy_gives_same_flags(data_dir, tmp_path):  # T31/T32
     week, shift = "2026-05-11", 7
     real = tmp_path / "real.csv"
-    subprocess.run([sys.executable, str(DETECT), "--feedback", str(data_dir / "feedback.csv"), "--as-of", week, "--out", str(real)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [sys.executable, str(DETECT), "--feedback", str(data_dir / "feedback.csv"), "--as-of", week, "--out", str(real)],
+        check=True,
+        capture_output=True,
+    )
     fid, sid = _disguise(data_dir, tmp_path / "disg", shift)
     new_week = str((pd.Timestamp(week) + pd.Timedelta(weeks=shift)).date())
     dis = tmp_path / "dis.csv"
-    subprocess.run([sys.executable, str(DETECT), "--feedback", str(tmp_path / "disg" / "feedback.csv"), "--as-of", new_week,
-                    "--out", str(dis)], check=True, capture_output=True)
+    subprocess.run(
+        [
+            sys.executable,
+            str(DETECT),
+            "--feedback",
+            str(tmp_path / "disg" / "feedback.csv"),
+            "--as-of",
+            new_week,
+            "--out",
+            str(dis),
+        ],
+        check=True,
+        capture_output=True,
+    )
     a, b = pd.read_csv(real), pd.read_csv(dis)
     assert len(a) == len(b)
     inv_f = {v: k for k, v in fid.items()}
     inv_s = {v: k for k, v in sid.items()}
+
     def key(df, mf, ms):
         return sorted(
             (ms(r.store_id), r.issue_type_id, tuple(sorted(mf(i) for i in r.evidence_feedback_ids.split(";"))))
@@ -105,6 +125,7 @@ def test_submission_files_if_present():  # T01/T02/T50 on the committed files
     if not (sub / "R5_predictions.csv").exists() or not (ROOT / "data" / "feedback.csv").exists():
         return
     from voice_of_store.io import validate_flags, validate_predictions
+
     fb = pd.read_csv(ROOT / "data" / "feedback.csv")
     assert validate_predictions(pd.read_csv(sub / "R5_predictions.csv"), fb["feedback_id"]) == []
     flags = pd.read_csv(sub / "R5_emerging_flags.csv")
@@ -120,6 +141,7 @@ def test_classifier_policy(data_dir):  # T10-T14: severity floor, non-issue low,
     fb = d.feedback.copy()
     fb["store"] = resolver.resolve_frame(fb)
     from voice_of_store.classify import FeedbackClassifier
+
     clf = FeedbackClassifier(d.taxonomy).fit(fb, d.labels)
     sample = fb.sample(2000, random_state=1)
     p = clf.predict(sample, sample["store"])

@@ -5,6 +5,7 @@
 
 Exit code 0 = every check passed. Checks that need the pack data skip with a note when data/ is absent.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,14 +58,25 @@ def main() -> int:
         if not (root / "FULL_CODE" / "detect.py").exists():
             bad.append("detector script FULL_CODE/detect.py missing")
 
-    for name in ("pyproject.toml", "requirements.txt", ".env.example", "SECURITY.md", "DEMO_SCRIPT.md", "Dockerfile"):
+    for name in (
+        "pyproject.toml",
+        "requirements.txt",
+        ".env.example",
+        "SECURITY.md",
+        "DEMO_SCRIPT.md",
+        "GUIDELINES_COMPLIANCE.md",
+        "Dockerfile",
+    ):
         if not (root / "FULL_CODE" / name).exists():
             bad.append(f"FULL_CODE/{name} missing")
 
     code = root / "FULL_CODE"
     web = list((code / "src" / "voice_of_store" / "web").rglob("*.py")) + [code / "serve.py"]
-    core = [p for p in list((code / "src").rglob("*.py")) + [code / n for n in ("detect.py", "make_submission.py", "make_briefs.py")]
-            if p not in web]
+    core = [
+        p
+        for p in list((code / "src").rglob("*.py")) + [code / n for n in ("detect.py", "make_submission.py", "make_briefs.py")]
+        if p not in web
+    ]
     for py in core:
         text = py.read_text()
         if FORBIDDEN_IMPORT.search(text):
@@ -82,7 +94,17 @@ def main() -> int:
             bad.append(f"forbidden import in web layer: {py.relative_to(root)}")
 
     readme = (root / "README.md").read_text() if (root / "README.md").exists() else ""
-    for h in ("What it does", "How to run", "How to run the tests", "Architecture", "AI usage", "Pre-built and third-party code", "Limitations", "Causal", "Security"):
+    for h in (
+        "What it does",
+        "How to run",
+        "How to run the tests",
+        "Architecture",
+        "AI usage",
+        "Pre-built and third-party code",
+        "Limitations",
+        "Causal",
+        "Security",
+    ):
         if h.lower() not in readme.lower():
             bad.append(f"README missing section: {h}")
 

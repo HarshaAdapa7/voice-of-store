@@ -1,4 +1,5 @@
 """Precision statement and honest (time-split) validation numbers."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -29,7 +30,11 @@ def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int 
     hi = pred_act & np.isin(p["severity"].values, ["high", "critical"])
     truth_act = te["actionable"].values == 1
     return dict(
-        n_train=len(tr), n_test=len(te), issue_macro_f1=mi, severity_weighted_f1=sv, actionable_f1=ac,
+        n_train=len(tr),
+        n_test=len(te),
+        issue_macro_f1=mi,
+        severity_weighted_f1=sv,
+        actionable_f1=ac,
         classification=0.5 * mi + 0.25 * sv + 0.25 * ac,
         precision_actionable=float(truth_act[pred_act].mean()) if pred_act.any() else float("nan"),
         n_pred_actionable=int(pred_act.sum()),

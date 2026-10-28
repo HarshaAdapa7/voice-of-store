@@ -90,7 +90,7 @@ FULL_CODE/
     io.py        read data from one folder, validate output files
     text.py      light normalisation + channel prefix
     stores.py    store resolver (recorded id, else a single named locality; same rule as the scorer)
-    classify.py  TF-IDF (char 2-5 + word 1-2) + class-balanced logistic regression; severity policy; actionable gates
+    classify.py  TF-IDF (char 2-5 + word 1-2) + class-balanced linear SVM (three heads: issue type, severity, actionable); severity policy; actionable gates
     detect.py    exposure-normalised Gamma-Poisson shrinkage + sequential LLR statistic, cooldown, flag cap
     evidence.py  re-implements the evidence checks (a)-(d) so cited ids pass
     pipeline.py  glue used identically by detect.py and make_submission.py
@@ -122,19 +122,19 @@ The web demo is read-only over synthetic data plus one stateless classify endpoi
 or outbound calls. Controls (each has a test in `tests/test_web.py`): strict Content-Security-Policy with no inline script,
 DOM built with `textContent` only, escaped printable brief, host allow-list (DNS rebinding), origin and fetch-metadata checks plus
 JSON-only POST (CSRF), allow-lists for every query value, fixed static-file table (no path traversal), body and text size
-limits, per-client rate limits with bounded memory, optional constant-time API key, generic errors with request ids,
+limits, per-client rate limits with bounded memory, optional login (salted scrypt hash, failed-login limiter) and constant-time API key, generic errors with request ids,
 logs without feedback text, contact details masked before display, HSTS when behind HTTPS, no pickle anywhere, non-root
-container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (no user
-authentication, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. Before exposing it, run
+container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (a single shared login, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. Before exposing it, run
 `pip-audit -r FULL_CODE/requirements.txt` (needs internet) and put it behind a TLS-terminating reverse proxy.
 
 ## Results (what was measured, and what it means)
 
 | Check | Result | Note |
 |---|---|---|
-| Time-split validation (train weeks 1-9, test labelled rows of weeks 10-13) | classification 0.880: issue macro-F1 0.848, severity weighted-F1 0.891, actionable F1 0.935 | Out of sample and forward in time; the best local proxy |
-| 5-fold cross-validation on the 3,000 labels | classification about 0.91 | Optimistic: random folds mix weeks |
-| Precision statement (time-split) | Marked actionable: 95.0% truly (95% interval 92.8%-96.5%); marked actionable and high/critical: 95.3% (90.6%-97.7%) | Sample over-represents rare types; not the full-stream rate |
+| Time-split validation (train weeks 1-9, test labelled rows of weeks 10-13) | classification 0.914: issue macro-F1 0.899, severity weighted-F1 0.913, actionable F1 0.944 | Out of sample and forward in time; the best local proxy |
+| Model choice (issue macro-F1, mean of three forward-in-time splits) | logistic regression 0.849, linear SVM 0.881, linear SVM with min_df=1 0.893 (chosen) | Same features and labels; the SVM won on every split. Its confidence is a softmax of margins: a ranking score, not a calibrated probability |
+| Organisers' baseline (keyword rules, from the pack README) | classification about 0.58, lead 0.33 on the training truth | Our worked-example lead is 0.50 and our time-split classification 0.914; different protocols, so read as direction, not a like-for-like gap |
+| Precision statement (time-split) | Marked actionable: 95.2% truly (95% interval 93.1%-96.7%); marked actionable and high/critical: 97.0% (92.6%-98.8%) | Sample over-represents rare types; not the full-stream rate |
 | Worked example (IT17, ST-D69EG) | first valid flag 2026-05-11, naive detector 2026-05-18: lead +1 week | One incident only; none of the three hidden ones are known |
 | Flag volume on the test half | 24 flags in 13 weeks (1.85 a week), budget is 3 | Planted incidents will add a few |
 | Synthetic injection grid (120 plants, three shapes) | mean lead score about 0.49 (about one week earlier than the naive rule) | Synthetic shapes, not a forecast |
@@ -142,7 +142,7 @@ authentication, no TLS termination, no independent penetration test): `FULL_CODE
 
 ## AI usage
 
-- **In the app (detector, classifier, web demo):** no LLM, no external AI API, no downloaded model. The classifier is scikit-learn logistic regression trained at
+- **In the app (detector, classifier, web demo):** no LLM, no external AI API, no downloaded model. The classifier is a scikit-learn linear SVM trained at
   run time from the public labels; nothing is pickled.
 - **While building:** Claude (Anthropic) was used as an AI coding and research assistant for planning, code, tests, the web
   demo, the security review and this README. Google AI Studio may be used for further development; any such use is added here. The team reviewed the code; every member should be able to explain it.
@@ -164,7 +164,7 @@ authentication, no TLS termination, no independent penetration test): `FULL_CODE
 - Cross-channel de-duplication is a stated heuristic (same store, same type, each report within 72 hours of the previous one).
   There is no duplicate ground truth, so it is not measured, and two real events at one store inside 72 hours merge. It is display
   only: it never changes the counts that feed the detector.
-- The web demo has no user authentication and no TLS (see Security); `waitress` was not installable where this was built, so the
+- The web demo has one shared login at most and no TLS (see Security); `waitress` was not installable where this was built, so the
   production-server path is reviewed but not run there; the Dockerfile was written but not built there.
 - Language handling relies on character n-grams, so unseen transliteration spellings and very short texts are the main error
   source. A multilingual encoder was not tried.

@@ -6,8 +6,11 @@ and cross-site requests against a localhost server, resource exhaustion, informa
 supply-chain issues. Each has a control below; none of them replaces running behind a TLS-terminating reverse proxy when the
 app is exposed beyond localhost.
 """
+
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
 import logging
 import os
@@ -19,14 +22,19 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from flask import Flask, Response, g, jsonify, request
+from werkzeug.security import check_password_hash
 
 log = logging.getLogger("voice_of_store.web")
 
 JSON_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-PAGE_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
-            "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
-BRIEF_CSP = ("default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
-             "frame-ancestors 'none'; object-src 'none'")  # the printable brief is static HTML with inline CSS, no script
+PAGE_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+)
+BRIEF_CSP = (
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
+    "frame-ancestors 'none'; object-src 'none'"
+)  # the printable brief is static HTML with inline CSS, no script
 
 
 @dataclass
@@ -34,12 +42,15 @@ class SecurityConfig:
     allowed_hosts: frozenset = frozenset({"127.0.0.1", "localhost", "[::1]"})
     max_body_bytes: int = 8 * 1024
     max_text_chars: int = 2000
-    rate_per_minute: int = 120          # all endpoints, per client address
-    classify_per_minute: int = 20       # the one POST endpoint
+    rate_per_minute: int = 120  # all endpoints, per client address
+    classify_per_minute: int = 20  # the one POST endpoint
     max_tracked_clients: int = 5000
-    api_key: str | None = None          # when set, /api/classify requires header X-API-Key
-    behind_https: bool = False          # adds HSTS (only set when TLS is terminated in front of the app)
-    trust_proxy: bool = False           # read the client address from X-Forwarded-For (only behind a trusted proxy)
+    api_key: str | None = None  # when set, /api/classify requires header X-API-Key
+    auth_user: str | None = None  # when set together with auth_hash, every page and API route needs HTTP Basic auth
+    auth_hash: str | None = None  # werkzeug password hash (scripts/make_auth_hash.py); the password is never stored
+    auth_fail_per_minute: int = 10  # failed logins per client per minute before 429
+    behind_https: bool = False  # adds HSTS (only set when TLS is terminated in front of the app)
+    trust_proxy: bool = False  # read the client address from X-Forwarded-For (only behind a trusted proxy)
     extra: dict = field(default_factory=dict)
 
     @classmethod
@@ -49,6 +60,10 @@ class SecurityConfig:
         if hosts:
             cfg.allowed_hosts = frozenset(hosts | {"127.0.0.1", "localhost", "[::1]"})
         cfg.api_key = os.environ.get("R5_API_KEY") or None
+        cfg.auth_user = os.environ.get("R5_AUTH_USER") or None
+        cfg.auth_hash = os.environ.get("R5_AUTH_HASH") or None
+        if bool(cfg.auth_user) != bool(cfg.auth_hash):
+            raise ValueError("set both R5_AUTH_USER and R5_AUTH_HASH, or neither")
         cfg.behind_https = os.environ.get("R5_HTTPS") == "1"
         cfg.trust_proxy = os.environ.get("R5_TRUST_PROXY") == "1"
         return cfg
@@ -88,7 +103,7 @@ def _client_ip(cfg: SecurityConfig) -> str:
 
 def _host_only(value: str) -> str:
     v = value.strip().lower()
-    if v.startswith("["):                      # [::1]:8000
+    if v.startswith("["):  # [::1]:8000
         return v.split("]")[0] + "]"
     return v.split(":")[0]
 
@@ -99,80 +114,127 @@ def _err(status: int, message: str) -> Response:
     return resp
 
 
-def install(app: Flask, cfg: SecurityConfig) -> None:
-    limiter = RateLimiter(cfg.max_tracked_clients)
-    app.config["MAX_CONTENT_LENGTH"] = cfg.max_body_bytes
-    app.config["JSON_SORT_KEYS"] = False
+# A throw-away hash so a wrong user name costs the same time as a wrong password (no user-name oracle).
+_DUMMY_HASH = "scrypt:32768:8:1$r5dummysalt0000$" + "0" * 128
 
-    @app.before_request
-    def _guard():  # noqa: ANN202
-        g.request_id = uuid.uuid4().hex[:12]
-        g.t0 = time.time()
-        host = _host_only(request.headers.get("Host", ""))
-        if host not in cfg.allowed_hosts:                       # DNS-rebinding and host-header attacks
-            return _err(400, "host not allowed")
-        client = _client_ip(cfg)
-        if not limiter.allow(client, "all", cfg.rate_per_minute):
-            resp = _err(429, "too many requests")
-            resp.headers["Retry-After"] = "60"
-            return resp
-        if request.method not in ("GET", "HEAD", "POST"):
-            return _err(405, "method not allowed")
-        if request.method == "POST":
-            origin = request.headers.get("Origin")
-            if origin and _host_only(urlsplit(origin).netloc) not in cfg.allowed_hosts:   # cross-site request
-                return _err(403, "cross-origin request refused")
-            if request.headers.get("Sec-Fetch-Site") not in (None, "same-origin", "none"):
-                return _err(403, "cross-site request refused")
-            if request.mimetype != "application/json":
-                return _err(415, "content type must be application/json")
-            if not limiter.allow(client, "classify", cfg.classify_per_minute):
-                resp = _err(429, "too many classify requests")
-                resp.headers["Retry-After"] = "60"
-                return resp
-            if cfg.api_key is not None:
-                given = request.headers.get("X-API-Key", "")
-                if not hmac.compare_digest(given.encode(), cfg.api_key.encode()):
-                    return _err(401, "missing or wrong API key")
+
+def _credentials() -> tuple[str, str] | None:
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Basic "):
         return None
+    try:
+        user, _, password = base64.b64decode(header[6:], validate=True).decode("utf-8").partition(":")
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return None
+    return user, password
 
-    @app.after_request
-    def _headers(resp: Response) -> Response:
-        path = request.path
-        csp = PAGE_CSP if path in ("/", "/index.html") else BRIEF_CSP if path == "/brief" else JSON_CSP
-        resp.headers["Content-Security-Policy"] = csp
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        resp.headers["X-Frame-Options"] = "DENY"
-        resp.headers["Referrer-Policy"] = "no-referrer"
-        resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-        resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-        resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        resp.headers["Cache-Control"] = "no-store" if path.startswith("/api") else "no-cache"
-        resp.headers.pop("Server", None)
-        if cfg.behind_https:
-            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        # log method, path, status, time, request id. Never the query values, body or feedback text (privacy).
-        log.info("%s %s %s %.0fms id=%s", request.method, path, resp.status_code, (time.time() - g.get("t0", time.time())) * 1000,
-                 g.get("request_id", "-"))
+
+def _authorised(cfg: SecurityConfig) -> bool:
+    creds = _credentials()
+    if creds is None or cfg.auth_user is None or cfg.auth_hash is None:
+        return False
+    user, password = creds
+    user_ok = hmac.compare_digest(user.encode(), cfg.auth_user.encode())
+    try:
+        pass_ok = check_password_hash(cfg.auth_hash if user_ok else _DUMMY_HASH, password)
+    except ValueError:
+        pass_ok = False
+    return user_ok and pass_ok
+
+
+def _login_required(limiter: RateLimiter, cfg: SecurityConfig, client: str) -> Response | None:
+    """HTTP Basic auth for everything except /api/health. Failed attempts are rate-limited per client."""
+    if cfg.auth_user is None or request.path == "/api/health":
+        return None
+    if _authorised(cfg):
+        return None
+    if not limiter.allow(client, "authfail", cfg.auth_fail_per_minute):
+        resp = _err(429, "too many failed logins")
+        resp.headers["Retry-After"] = "60"
         return resp
+    resp = _err(401, "authentication required")
+    resp.headers["WWW-Authenticate"] = 'Basic realm="Voice-of-Store", charset="UTF-8"'
+    return resp
 
-    @app.errorhandler(400)
-    def _e400(_e):  # noqa: ANN001, ANN202
-        return _err(400, "bad request")
 
-    @app.errorhandler(404)
-    def _e404(_e):  # noqa: ANN001, ANN202
-        return _err(404, "not found")
+def _post_checks(cfg: SecurityConfig, limiter: RateLimiter, client: str) -> Response | None:
+    origin = request.headers.get("Origin")
+    if origin and _host_only(urlsplit(origin).netloc) not in cfg.allowed_hosts:  # cross-site request
+        return _err(403, "cross-origin request refused")
+    if request.headers.get("Sec-Fetch-Site") not in (None, "same-origin", "none"):
+        return _err(403, "cross-site request refused")
+    if request.mimetype != "application/json":
+        return _err(415, "content type must be application/json")
+    if not limiter.allow(client, "classify", cfg.classify_per_minute):
+        resp = _err(429, "too many classify requests")
+        resp.headers["Retry-After"] = "60"
+        return resp
+    if cfg.api_key is not None:
+        given = request.headers.get("X-API-Key", "")
+        if not hmac.compare_digest(given.encode(), cfg.api_key.encode()):
+            return _err(401, "missing or wrong API key")
+    return None
 
-    @app.errorhandler(405)
-    def _e405(_e):  # noqa: ANN001, ANN202
+
+def _guard(cfg: SecurityConfig, limiter: RateLimiter) -> Response | None:
+    g.request_id = uuid.uuid4().hex[:12]
+    g.t0 = time.time()
+    if _host_only(request.headers.get("Host", "")) not in cfg.allowed_hosts:  # DNS-rebinding and host-header attacks
+        return _err(400, "host not allowed")
+    client = _client_ip(cfg)
+    if not limiter.allow(client, "all", cfg.rate_per_minute):
+        resp = _err(429, "too many requests")
+        resp.headers["Retry-After"] = "60"
+        return resp
+    if request.method not in ("GET", "HEAD", "POST"):
         return _err(405, "method not allowed")
+    denied = _login_required(limiter, cfg, client)
+    if denied is not None:
+        return denied
+    return _post_checks(cfg, limiter, client) if request.method == "POST" else None
 
-    @app.errorhandler(413)
-    def _e413(_e):  # noqa: ANN001, ANN202
-        return _err(413, "request too large")
+
+def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
+    path = request.path
+    csp = PAGE_CSP if path in ("/", "/index.html") else BRIEF_CSP if path == "/brief" else JSON_CSP
+    resp.headers["Content-Security-Policy"] = csp
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    resp.headers["Cache-Control"] = "no-store" if path.startswith("/api") or cfg.auth_user else "no-cache"
+    resp.headers.pop("Server", None)
+    if cfg.behind_https:
+        resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # log method, path, status, time, request id. Never the query values, body or feedback text (privacy).
+    log.info(
+        "%s %s %s %.0fms id=%s",
+        request.method,
+        path,
+        resp.status_code,
+        (time.time() - g.get("t0", time.time())) * 1000,
+        g.get("request_id", "-"),
+    )
+    return resp
+
+
+def _register_errors(app: Flask) -> None:
+    messages = {400: "bad request", 404: "not found", 405: "method not allowed", 413: "request too large"}
+    for code, text in messages.items():
+        app.register_error_handler(code, lambda _e, c=code, t=text: _err(c, t))
 
     @app.errorhandler(Exception)
-    def _e500(exc):  # noqa: ANN001, ANN202
-        log.error("unhandled %s id=%s", type(exc).__name__, g.get("request_id", "-"))   # type only, never the message
+    def _unhandled(exc: Exception) -> Response:
+        log.error("unhandled %s id=%s", type(exc).__name__, g.get("request_id", "-"))  # type only, never the message
         return _err(500, "internal error")
+
+
+def install(app: Flask, cfg: SecurityConfig) -> None:
+    """Attach every control to the app: guard before each request, headers after, generic error pages."""
+    limiter = RateLimiter(cfg.max_tracked_clients)
+    app.config["MAX_CONTENT_LENGTH"] = cfg.max_body_bytes
+    app.before_request(lambda: _guard(cfg, limiter))
+    app.after_request(lambda resp: _add_headers(cfg, resp))
+    _register_errors(app)

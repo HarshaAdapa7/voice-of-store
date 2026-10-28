@@ -1,4 +1,5 @@
 """Security and API tests for the web app. The security tests use a stub state, so they need neither data nor a model."""
+
 from __future__ import annotations
 
 import logging
@@ -19,14 +20,34 @@ class StubState:
     weeks = [WEEK]
 
     def meta(self):
-        return dict(regions=self.regions, weeks=self.weeks, test_weeks=self.weeks, channels=["in_app", "staff_shift_note"],
-                    issue_types=[dict(id="IT10", name="Refrigeration", owner="Store Ops", floor="high")],
-                    stores=[dict(id="ST-ABCDE", name="Saffron Market Test", region=REGION)])
+        return dict(
+            regions=self.regions,
+            weeks=self.weeks,
+            test_weeks=self.weeks,
+            channels=["in_app", "staff_shift_note"],
+            issue_types=[dict(id="IT10", name="Refrigeration", owner="Store Ops", floor="high")],
+            stores=[dict(id="ST-ABCDE", name="Saffron Market Test", region=REGION)],
+        )
 
     def brief(self, region, week):
-        return [dict(issue="Refrigeration", owner="Store Ops", severity="high", tier="UNVERIFIED", window="same day", count=1,
-                     channels=1, n_stores=1, stores=[("Saffron Market Test", 1)], trend="→", prev_count=0, emerging=[],
-                     quotes=[("in_app", XSS)], dedup=dict(reports=1, incidents=1, cross_channel=0))]
+        return [
+            dict(
+                issue="Refrigeration",
+                owner="Store Ops",
+                severity="high",
+                tier="UNVERIFIED",
+                window="same day",
+                count=1,
+                channels=1,
+                n_stores=1,
+                stores=[("Saffron Market Test", 1)],
+                trend="→",
+                prev_count=0,
+                emerging=[],
+                quotes=[("in_app", XSS)],
+                dedup=dict(reports=1, incidents=1, cross_channel=0),
+            )
+        ]
 
     def week_rows(self, region, week):
         return 1
@@ -100,10 +121,20 @@ def test_content_type_and_method_rules(client):
     assert client.post("/api/meta", json={}).status_code == 405
 
 
-@pytest.mark.parametrize("body", [
-    {}, {"text": ""}, {"text": "   "}, {"text": 5}, {"text": "x", "channel": "fax"}, {"text": "x", "extra": 1},
-    {"text": "x" * 2001}, [], "just a string",
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"text": ""},
+        {"text": "   "},
+        {"text": 5},
+        {"text": "x", "channel": "fax"},
+        {"text": "x", "extra": 1},
+        {"text": "x" * 2001},
+        [],
+        "just a string",
+    ],
+)
 def test_classify_rejects_bad_input(client, body):
     assert client.post("/api/classify", json=body).status_code == 400
 
@@ -126,8 +157,18 @@ def test_query_parameters_use_allow_lists(client):
 
 
 def test_only_allow_listed_static_files(client):
-    for p in ("/../etc/passwd", "/..%2f..%2fetc/passwd", "/static/../server.py", "/server.py", "/state.py", "/%2e%2e/security.py",
-              "/app.js/../security.py", "/index.html/", "/.git/config", "/.env"):
+    for p in (
+        "/../etc/passwd",
+        "/..%2f..%2fetc/passwd",
+        "/static/../server.py",
+        "/server.py",
+        "/state.py",
+        "/%2e%2e/security.py",
+        "/app.js/../security.py",
+        "/index.html/",
+        "/.git/config",
+        "/.env",
+    ):
         assert client.get(p).status_code == 404, p
     assert client.get("/app.js").status_code == 200 and client.get("/style.css").status_code == 200
 
@@ -141,8 +182,9 @@ def test_user_content_is_escaped_in_printable_brief(client):
 
 def test_frontend_never_uses_html_injection():
     from pathlib import Path
+
     js = (Path(__file__).resolve().parents[1] / "src/voice_of_store/web/static/app.js").read_text()
-    for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", "setTimeout(\""):
+    for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", 'setTimeout("'):
         assert bad not in js, bad
     html = (Path(__file__).resolve().parents[1] / "src/voice_of_store/web/static/index.html").read_text()
     assert "<script>" not in html and " onclick" not in html and "style=" not in html
@@ -162,7 +204,12 @@ def test_logs_contain_no_user_text(client, caplog):
         client.post("/api/classify", json=dict(text="boom", channel="in_app"))
         client.get("/api/brief", query_string={"region": "private-name", "week": WEEK})
     logged = " ".join(r.getMessage() for r in caplog.records)
-    assert "9876543210" not in logged and "a@b.com" not in logged and "private-name" not in logged and "internal detail" not in logged
+    assert (
+        "9876543210" not in logged
+        and "a@b.com" not in logged
+        and "private-name" not in logged
+        and "internal detail" not in logged
+    )
 
 
 def test_rate_limits():
@@ -188,7 +235,7 @@ def test_api_key_when_configured():
     assert c.post("/api/classify", json=body).status_code == 401
     assert c.post("/api/classify", json=body, headers={"X-API-Key": "wrong"}).status_code == 401
     assert c.post("/api/classify", json=body, headers={"X-API-Key": "s3cret-key-value"}).status_code == 200
-    assert c.get("/api/meta").status_code == 200     # read-only analytics stay open on the private network
+    assert c.get("/api/meta").status_code == 200  # read-only analytics stay open on the private network
 
 
 def test_forwarded_header_ignored_unless_proxy_trusted():
@@ -203,10 +250,92 @@ def test_no_cookies_set(client):
     assert "Set-Cookie" not in client.post("/api/classify", json=dict(text="hi", channel="in_app")).headers
 
 
+def _auth_client(**kw):
+    from werkzeug.security import generate_password_hash
+
+    h = generate_password_hash("correct horse battery", method="scrypt:4096:8:1")  # cheap cost: this is a test
+    return make(auth_user="judge", auth_hash=h, **kw)
+
+
+def _basic(user, password):
+    import base64
+
+    return {"Authorization": "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()}
+
+
+def test_login_protects_every_page_and_api():
+    c = _auth_client()
+    for path in ("/", "/app.js", "/style.css", "/api/meta", "/api/validation", f"/brief?region={REGION}&week={WEEK}"):
+        r = c.get(path)
+        assert r.status_code == 401 and r.headers["WWW-Authenticate"].startswith("Basic"), path
+    assert c.post("/api/classify", json=dict(text="hi", channel="in_app")).status_code == 401
+    assert c.get("/api/health").status_code == 200  # health check only, no data
+    good = _basic("judge", "correct horse battery")
+    assert c.get("/api/meta", headers=good).status_code == 200
+    assert c.post("/api/classify", json=dict(text="hi", channel="in_app"), headers=good).status_code == 200
+    assert c.get("/api/meta", headers=good).headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    "hdr",
+    [
+        {},
+        {"Authorization": "Bearer abc"},
+        {"Authorization": "Basic !!!notbase64"},
+        {"Authorization": "Basic " + "QQ=="},
+        {"Authorization": "Basic"},
+    ],
+)
+def test_login_rejects_malformed_credentials(hdr):
+    assert _auth_client().get("/api/meta", headers=hdr).status_code == 401
+
+
+def test_login_rejects_wrong_user_or_password():
+    c = _auth_client()
+    assert c.get("/api/meta", headers=_basic("judge", "wrong password!!")).status_code == 401
+    assert c.get("/api/meta", headers=_basic("admin", "correct horse battery")).status_code == 401
+    assert c.get("/api/meta", headers=_basic("judge", "")).status_code == 401
+
+
+def test_failed_logins_are_rate_limited():
+    c = _auth_client(auth_fail_per_minute=3)
+    codes = [c.get("/api/meta", headers=_basic("judge", "bad")).status_code for _ in range(5)]
+    assert codes == [401, 401, 401, 429, 429]
+    # the limiter also stops a correct password being tried after many failures from the same client only for failures;
+    # a correct login still works
+    assert c.get("/api/meta", headers=_basic("judge", "correct horse battery")).status_code == 200
+
+
+def test_auth_env_needs_both_values(monkeypatch):
+    monkeypatch.setenv("R5_AUTH_USER", "judge")
+    monkeypatch.delenv("R5_AUTH_HASH", raising=False)
+    with pytest.raises(ValueError):
+        SecurityConfig.from_env()
+
+
+def test_exposure_rules(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("serve", Path(__file__).resolve().parents[1] / "serve.py")
+    serve = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(serve)
+    serve.check_exposure("127.0.0.1", SecurityConfig())  # loopback is always fine
+    with pytest.raises(SystemExit):
+        serve.check_exposure("0.0.0.0", SecurityConfig())  # needs a host allow-list  # noqa: S104
+    public = SecurityConfig(allowed_hosts=frozenset({"127.0.0.1", "localhost", "[::1]", "demo.example.com"}))
+    serve.check_exposure("0.0.0.0", public)  # noqa: S104
+    with pytest.raises(SystemExit):  # login over plain HTTP is refused
+        serve.check_exposure("0.0.0.0", SecurityConfig(allowed_hosts=public.allowed_hosts, auth_user="u", auth_hash="h"))  # noqa: S104
+    https_login = SecurityConfig(allowed_hosts=public.allowed_hosts, auth_user="u", auth_hash="h", behind_https=True)
+    serve.check_exposure("0.0.0.0", https_login)  # noqa: S104
+
+
 # ---------------- with the real state (needs data/) ----------------
 @pytest.fixture(scope="module")
 def real(data_dir_module):
     from voice_of_store.web.state import AppState
+
     sub = data_dir_module.parent / "submission"
     if not (sub / "R5_emerging_flags.csv").exists():
         pytest.skip("submission files not present")
@@ -217,6 +346,7 @@ def real(data_dir_module):
 @pytest.fixture(scope="module")
 def data_dir_module():
     from conftest import DATA
+
     if not (DATA / "feedback.csv").exists():
         pytest.skip("pack data not present in data/")
     return DATA
@@ -224,7 +354,10 @@ def data_dir_module():
 
 def test_real_classify_and_brief(real):
     state, c = real
-    r = c.post("/api/classify", json=dict(text="frzr 3 not cooling since morning at Kothrud, ice cream melting", channel="staff_shift_note"))
+    r = c.post(
+        "/api/classify",
+        json=dict(text="frzr 3 not cooling since morning at Kothrud, ice cream melting", channel="staff_shift_note"),
+    )
     j = r.get_json()
     assert r.status_code == 200 and j["issue_type"] == "IT10" and j["severity"] in ("high", "critical")
     assert j["store_named"] and j["owner"] == "Store Ops" and j["key_terms"]

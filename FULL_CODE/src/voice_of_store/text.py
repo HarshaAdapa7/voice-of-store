@@ -1,4 +1,5 @@
 """Text preparation. Light on purpose: the char n-grams absorb typos, SMS spellings and transliteration."""
+
 from __future__ import annotations
 
 import re

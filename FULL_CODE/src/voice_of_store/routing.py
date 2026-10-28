@@ -1,4 +1,5 @@
 """Routing: owner function, severity and the written escalation rule."""
+
 from __future__ import annotations
 
 import pandas as pd

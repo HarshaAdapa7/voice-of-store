@@ -5,6 +5,7 @@ reports are the same incident when they share the resolved store and the predict
 the previous one by at most `gap_hours`. Time order is the only linkage, so one event told in different languages by
 different channels is merged even when the wording differs. Counts that feed the detector are NOT changed by this.
 """
+
 from __future__ import annotations
 
 import pandas as pd

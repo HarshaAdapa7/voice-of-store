@@ -10,3 +10,12 @@ __pycache__/
 .mypy_cache/
 score.json
 out/
+
+.DS_Store
+Thumbs.db
+*.log
+*.zip
+.ipynb_checkpoints/
+dist/
+build/
+*.egg-info/

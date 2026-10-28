@@ -1,4 +1,5 @@
 """Store resolver. Uses the same locality rule the scorer uses for evidence check (b)."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -26,6 +27,12 @@ class StoreResolver:
         if isinstance(store_id, str) and store_id in self.valid:
             return store_id
         hits = self.names_in_text(text)
+        # "Salt Lake City" also contains "Salt Lake": when one locality is part of a longer named one, the longer one is meant
+        hits = [
+            h
+            for h in hits
+            if not any(self.locality[h] != self.locality[o] and self.locality[h] in self.locality[o] for o in hits)
+        ]
         return hits[0] if len(hits) == 1 else None
 
     def resolve_frame(self, df: pd.DataFrame) -> pd.Series:

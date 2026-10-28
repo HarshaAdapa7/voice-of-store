@@ -14,7 +14,7 @@ Setup (before the jury): `pip install -r FULL_CODE/requirements.txt`, put the pa
    week before the naive detector.
 4. **Try a comment (20 s).** Paste `frzr 3 not cooling since morning at Kothrud, ice cream melting` as a shift note. Show owner,
    severity, actionable, the store found in the text and the key terms. Paste `<script>alert(1)</script>` to show it stays inert.
-5. **Precision and honesty (25 s).** Open Precision: "Of records we mark actionable, 95% truly are (interval 92.8-96.5%), measured
+5. **Precision and honesty (25 s).** Open Precision: "Of records we mark actionable, 95% truly are (interval 93.1-96.7%), measured
    forward in time. Limits: one visible incident to tune on, small labelled sample, synthetic data, no reporter ids."
 6. **Responsibility (10 s).** "Feedback is unverified, nothing is escalated on one angry post alone, logs hold no feedback text,
    and the security controls are listed in SECURITY.md."
