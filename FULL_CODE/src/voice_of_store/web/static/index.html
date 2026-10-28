@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice-of-Store</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Voice-of-Store Engine</h1>
+  <p class="sub">Weekly action list per region from reviews, app comments, shift notes and call transcripts. Synthetic data.</p>
+  <nav role="tablist" aria-label="Views">
+    <button role="tab" data-view="brief" aria-selected="true">Weekly brief</button>
+    <button role="tab" data-view="emerging" aria-selected="false">Emerging issues</button>
+    <button role="tab" data-view="try" aria-selected="false">Try a comment</button>
+    <button role="tab" data-view="precision" aria-selected="false">Precision</button>
+  </nav>
+</header>
+<main>
+  <section id="view-brief">
+    <div class="controls">
+      <label>Region <select id="region"></select></label>
+      <label>Week <select id="week"></select></label>
+      <a id="print" class="btn" target="_blank" rel="noopener noreferrer">Open printable page</a>
+    </div>
+    <div id="brief" aria-live="polite"></div>
+  </section>
+  <section id="view-emerging" hidden>
+    <div class="controls"><label>Week <select id="eweek"></select></label></div>
+    <p class="sub">A flag means a store reports an issue type clearly above its own normal rate, with at least two reports this week. At most three flags a week.</p>
+    <div id="flags" aria-live="polite"></div>
+  </section>
+  <section id="view-try" hidden>
+    <form id="tryform">
+      <label>Channel <select id="channel"></select></label>
+      <label>Comment <textarea id="text" maxlength="2000" rows="4" placeholder="e.g. frzr 3 not cooling since morning at Kothrud, ice cream melting"></textarea></label>
+      <button class="btn" type="submit">Classify</button>
+    </form>
+    <div id="result" aria-live="polite"></div>
+  </section>
+  <section id="view-precision" hidden>
+    <div id="precision"></div>
+  </section>
+</main>
+<footer id="rule"></footer>
+<script src="/app.js"></script>
+</body>
+</html>

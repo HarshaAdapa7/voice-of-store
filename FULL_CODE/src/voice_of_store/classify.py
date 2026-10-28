@@ -63,6 +63,19 @@ class FeedbackClassifier:
             index=feedback.index,
         )
 
+    def explain(self, feedback: pd.DataFrame, top: int = 6) -> list[tuple[str, float]]:
+        """Word-level terms that pushed one row toward its predicted type (largest positive contributions)."""
+        x = self.vec.transform(model_input(feedback.iloc[[0]]))
+        idx = int(self.issue.predict_proba(x).argmax())
+        coef = self.issue.coef_[idx]
+        (_, char_v), (_, word_v) = self.vec.transformer_list
+        offset = len(char_v.vocabulary_)
+        names = word_v.get_feature_names_out()
+        row = x.tocoo()
+        contrib = [(names[j - offset], float(v * coef[j])) for j, v in zip(row.col, row.data) if j >= offset]
+        contrib = [c for c in contrib if c[1] > 0]
+        return sorted(contrib, key=lambda kv: -kv[1])[:top]
+
     def _apply_policy(self, itype: pd.Series, sev: pd.Series) -> pd.Series:
         """severity = max(policy floor, model). Non-issues are low."""
         floor = itype.map(self.floor).fillna("low")

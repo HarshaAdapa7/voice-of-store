@@ -15,6 +15,9 @@ from pathlib import Path
 
 ALLOWED_TOP = {"README.md", ".gitignore", "LICENSE", "submission", "FULL_CODE", ".git"}
 FORBIDDEN_IMPORT = re.compile(r"^\s*(import|from)\s+(requests|urllib|http|socket|pickle|joblib|httpx|aiohttp)\b", re.M)
+# the web demo may parse URLs; nothing may use pickle or make outbound requests
+FORBIDDEN_WEB = re.compile(r"^\s*(import|from)\s+(requests|socket|pickle|joblib|httpx|aiohttp|subprocess)\b", re.M)
+WEB_IMPORT = re.compile(r"^\s*(import|from)\s+(voice_of_store\.web|\.web|\.\.web)\b", re.M)
 HARD_CODED = re.compile(r"\b20\d\d-\d\d-\d\d\b|\b(ST|FB)-[A-Z0-9]{5,8}\b")
 SECRETS = re.compile(r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{8,}", re.I)
 
@@ -54,21 +57,32 @@ def main() -> int:
         if not (root / "FULL_CODE" / "detect.py").exists():
             bad.append("detector script FULL_CODE/detect.py missing")
 
-    for name in ("pyproject.toml", "requirements.txt", ".env.example"):
+    for name in ("pyproject.toml", "requirements.txt", ".env.example", "SECURITY.md", "DEMO_SCRIPT.md", "Dockerfile"):
         if not (root / "FULL_CODE" / name).exists():
             bad.append(f"FULL_CODE/{name} missing")
 
-    for py in list((root / "FULL_CODE" / "src").rglob("*.py")) + [root / "FULL_CODE" / n for n in ("detect.py", "make_submission.py", "make_briefs.py")]:
+    code = root / "FULL_CODE"
+    web = list((code / "src" / "voice_of_store" / "web").rglob("*.py")) + [code / "serve.py"]
+    core = [p for p in list((code / "src").rglob("*.py")) + [code / n for n in ("detect.py", "make_submission.py", "make_briefs.py")]
+            if p not in web]
+    for py in core:
         text = py.read_text()
         if FORBIDDEN_IMPORT.search(text):
             bad.append(f"network/pickle import in {py.relative_to(root)}")
+        if WEB_IMPORT.search(text):
+            bad.append(f"detector-side module imports the web layer: {py.relative_to(root)}")
+    for py in core + web:
+        text = py.read_text()
         if HARD_CODED.search(text):
             bad.append(f"hard-coded date or id in {py.relative_to(root)}")
         if SECRETS.search(text):
             bad.append(f"possible secret in {py.relative_to(root)}")
+    for py in web:
+        if FORBIDDEN_WEB.search(py.read_text()):
+            bad.append(f"forbidden import in web layer: {py.relative_to(root)}")
 
     readme = (root / "README.md").read_text() if (root / "README.md").exists() else ""
-    for h in ("What it does", "How to run", "How to run the tests", "Architecture", "AI usage", "Pre-built and third-party code", "Limitations", "Causal"):
+    for h in ("What it does", "How to run", "How to run the tests", "Architecture", "AI usage", "Pre-built and third-party code", "Limitations", "Causal", "Security"):
         if h.lower() not in readme.lower():
             bad.append(f"README missing section: {h}")
 

@@ -18,13 +18,16 @@ def sunday_end(monday: pd.Timestamp) -> pd.Timestamp:
     return monday + pd.Timedelta(days=7)
 
 
-def prepare_rows(data: Data, cutoff_excl: pd.Timestamp, resolver: StoreResolver, clf_cache: dict | None = None) -> pd.DataFrame:
+def prepare_rows(data: Data, cutoff_excl: pd.Timestamp, resolver: StoreResolver, clf_cache: dict | None = None,
+                 clf: FeedbackClassifier | None = None) -> pd.DataFrame:
     """Predict every feedback row created before cutoff_excl. The classifier sees only labels of rows before the cutoff;
     labelled rows keep their public label (it is known data)."""
     fb = data.feedback[data.feedback["created_at"] < cutoff_excl].copy()
     labelled = data.labels[data.labels["feedback_id"].isin(fb["feedback_id"])]
     key = len(labelled)
-    if clf_cache is not None and key in clf_cache:
+    if clf is not None:
+        pass
+    elif clf_cache is not None and key in clf_cache:
         clf = clf_cache[key]
     else:
         clf = FeedbackClassifier(data.taxonomy).fit(fb, labelled)

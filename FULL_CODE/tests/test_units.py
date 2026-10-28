@@ -71,3 +71,27 @@ def test_detector_is_causal():  # T30 (statistic level): changing future weeks n
     cut = run_statistic(c2, np.full(6, 5000.0), tie_rank=np.arange(6))
     assert np.array_equal(full["flag"][:, :, :12], cut["flag"][:, :, :12])
     assert np.allclose(full["cusum"][:, :, :12], cut["cusum"][:, :, :12])
+
+
+def test_redact_and_clean_input():  # privacy: masks contact details; control characters and length are cleaned
+    from voice_of_store.text import clean_input, redact
+    out = redact("call 98765 43210 or +91 9876543210 mail a.b@x.co.in id 123456789012")
+    assert "98765" not in out and "@" not in out and "123456789012" not in out
+    assert redact("queue of 12 people at counter 3") == "queue of 12 people at counter 3"
+    assert clean_input("a\x00b\x07  c\n\td", 100) == "a b c d"
+    assert len(clean_input("x" * 500, 50)) == 50
+
+
+def test_dedup_clusters():
+    from voice_of_store.dedup import cluster_incidents, summarise
+    t = pd.Timestamp("2026-06-01 09:00")
+    rows = pd.DataFrame({
+        "feedback_id": list("abcde"), "store": ["S1", "S1", "S1", "S1", "S2"], "itype": ["IT10"] * 5,
+        "created_at": [t, t + pd.Timedelta(hours=30), t + pd.Timedelta(hours=60), t + pd.Timedelta(days=10), t],
+        "channel": ["in_app", "staff_shift_note", "in_app", "in_app", "in_app"],
+    })
+    inc = cluster_incidents(rows).set_index("feedback_id")["incident"]
+    assert inc["a"] == inc["b"] == inc["c"] and inc["d"] != inc["a"] and inc["e"] != inc["a"]   # chained within 72 h
+    s = summarise(rows)
+    assert s == dict(reports=5, incidents=3, cross_channel=1)
+    assert summarise(rows.iloc[0:0]) == dict(reports=0, incidents=0, cross_channel=0)

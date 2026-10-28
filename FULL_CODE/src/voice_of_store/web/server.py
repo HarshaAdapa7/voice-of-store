@@ -1,0 +1,89 @@
+"""Flask application factory. All user-controlled values are validated against allow-lists before use."""
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+
+from flask import Flask, Response, abort, jsonify, request, send_file
+
+from ..routing import ESCALATION_RULE
+from .security import SecurityConfig, install
+from .state import AppState
+
+STATIC = Path(__file__).resolve().parent / "static"
+STATIC_FILES = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css"}
+STATIC_TYPES = {"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_ID = re.compile(r"^[A-Za-z0-9-]{1,16}$")
+
+
+def create_app(state: AppState, cfg: SecurityConfig | None = None) -> Flask:
+    cfg = cfg or SecurityConfig.from_env()
+    app = Flask(__name__, static_folder=None)
+    install(app, cfg)
+    meta = state.meta()
+    channels = set(meta["channels"])
+    types = {t["id"] for t in meta["issue_types"]}
+    stores = {s["id"] for s in meta["stores"]}
+    regions, weeks = set(state.regions), set(state.weeks)
+
+    def arg(name: str, allowed: set, pattern: re.Pattern | None = None) -> str:
+        v = request.args.get(name, "")
+        if (pattern and not pattern.match(v)) or v not in allowed:
+            abort(400)
+        return v
+
+    def static_page() -> Response:
+        name = STATIC_FILES[request.path]                      # key comes from a fixed table, never from the user
+        return send_file(STATIC / name, mimetype=STATIC_TYPES[name].split(";")[0], max_age=0)
+
+    for path in STATIC_FILES:
+        app.add_url_rule(path, endpoint="static_" + path.strip("/").replace(".", "_") or "static_root", view_func=static_page,
+                         methods=["GET"])
+
+    @app.get("/api/health")
+    def health():
+        return jsonify(status="ok")
+
+    @app.get("/api/meta")
+    def get_meta():
+        return jsonify(dict(meta, escalation_rule=ESCALATION_RULE))
+
+    @app.get("/api/brief")
+    def get_brief():
+        region, week = arg("region", regions), arg("week", weeks, _DATE)
+        return jsonify(region=region, week=week, rows_used=state.week_rows(region, week), entries=state.brief(region, week))
+
+    @app.get("/brief")
+    def brief_page():
+        from ..brief import render_html
+        region, week = arg("region", regions), arg("week", weeks, _DATE)
+        return Response(render_html(region, week, state.brief(region, week), state.week_rows(region, week)),
+                        mimetype="text/html")
+
+    @app.get("/api/flags")
+    def get_flags():
+        week = arg("week", weeks, _DATE)
+        return jsonify(week=week, flags=state.flags_for(week))
+
+    @app.get("/api/series")
+    def get_series():
+        return jsonify(state.series(arg("store_id", stores, _ID), arg("issue_type", types)))
+
+    @app.get("/api/validation")
+    def get_validation():
+        return jsonify(state.validation())
+
+    @app.post("/api/classify")
+    def post_classify():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or set(body) - {"text", "channel"}:
+            abort(400)
+        text, channel = body.get("text"), body.get("channel", "in_app")
+        if not isinstance(text, str) or not text.strip() or len(text) > cfg.max_text_chars or channel not in channels:
+            abort(400)
+        return jsonify(state.classify(text, channel))
+
+    logging.getLogger("voice_of_store.web").setLevel(logging.INFO)
+    return app

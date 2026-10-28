@@ -20,3 +20,22 @@ def normalise(text: str) -> str:
 def model_input(df: pd.DataFrame) -> pd.Series:
     """Channel prefix + normalised text: channels write differently and cover different issues."""
     return df["channel"].astype(str) + " || " + df["text"].map(normalise)
+
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+_PHONE = re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)")
+_LONGNUM = re.compile(r"(?<!\d)\d{9,}(?!\d)")
+_CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def redact(text: str) -> str:
+    """Defence in depth for anything shown to a person: mask emails, phone numbers and long digit runs."""
+    t = _EMAIL.sub("[email]", str(text))
+    t = _PHONE.sub("[phone]", t)
+    return _LONGNUM.sub("[number]", t)
+
+
+def clean_input(text: str, max_len: int) -> str:
+    """Strip control characters, collapse whitespace and cap the length (for text typed into the web app)."""
+    t = _CTRL.sub(" ", str(text))
+    return _WS.sub(" ", t).strip()[:max_len]

@@ -6,8 +6,10 @@ import html
 import pandas as pd
 
 from . import config as C
+from .dedup import summarise
 from .io import monday_of
 from .routing import ESCALATION_RULE, SAFETY_TYPES, action_window, owner_of
+from .text import redact
 
 TIER_ORDER = {"POSSIBLE SYSTEMIC": 2, "CORROBORATED": 1, "UNVERIFIED": 0}
 
@@ -61,7 +63,8 @@ def build_region_week(rows: pd.DataFrame, flags: pd.DataFrame, stores: pd.DataFr
             stores=[(name[s], int(n)) for s, n in per_store.head(4).items()],
             trend=_trend(len(g), int((prev["itype"] == itype).sum())), prev_count=int((prev["itype"] == itype).sum()),
             emerging=[name[s] for s in emerging], window=action_window(sev, itype, bool(emerging)),
-            quotes=[(r.channel, r.text[:220]) for r in quotes.itertuples()],
+            quotes=[(r.channel, redact(r.text[:220])) for r in quotes.itertuples()],
+            dedup=summarise(g),
             key=(-sev_rank, -TIER_ORDER[tier], -(len(g) + 3 * len(emerging)), -n_stores, itype),
         ))
     out.sort(key=lambda e: e["key"])
@@ -79,7 +82,7 @@ def render_html(region: str, week: str, entries: list[dict], n_rows: int) -> str
         cards.append(
             f"<section class='card sev-{e['severity']}'><h2>{i}. {esc(e['issue'])} <span class='trend'>{e['trend']}</span></h2>"
             f"<div class='meta'><b>{esc(e['owner'])}</b> · severity <b>{e['severity']}</b> · {esc(e['tier'])} · act: {esc(e['window'])}</div>"
-            f"<div class='meta'>{e['count']} reports ({e['prev_count']} last week) · {e['channels']} channel(s) · {e['n_stores']} store(s): {stores}</div>"
+            f"<div class='meta'>{e['count']} reports in {e['dedup']['incidents']} incident(s) ({e['dedup']['cross_channel']} seen in 2+ channels) ({e['prev_count']} last week) · {e['channels']} channel(s) · {e['n_stores']} store(s): {stores}</div>"
             f"{emerg}<ul>{quotes}</ul></section>"
         )
     body = "".join(cards) or "<p>No actionable issues this week.</p>"

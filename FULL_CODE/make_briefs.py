@@ -57,6 +57,9 @@ def main() -> None:
     v = time_split_validation(d, resolver)
     lo1, hi1 = wilson(round(v["precision_actionable"] * v["n_pred_actionable"]), v["n_pred_actionable"])
     lo2, hi2 = wilson(round(v["precision_actionable_high"] * v["n_pred_actionable_high"]), v["n_pred_actionable_high"])
+    import json
+    v["ci_actionable"], v["ci_actionable_high"] = [lo1, hi1], [lo2, hi2]
+    (Path(a.out) / "validation.json").write_text(json.dumps(v), encoding="utf-8")
     (Path(a.out) / "validation.md").write_text(
         "# Validation and precision statement (time-split, out of sample)\n\n"
         f"Trained on labelled rows of weeks 1-9 ({v['n_train']} rows), tested on labelled rows of weeks 10-13 ({v['n_test']} rows).\n\n"
