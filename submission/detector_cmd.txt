@@ -1,0 +1,1 @@
+python FULL_CODE/detect.py --feedback {feedback} --as-of {asof} --out {out}

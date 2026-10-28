@@ -1,0 +1,81 @@
+"""Emerging-issue detector: per (store, issue type) weekly counts, exposure-normalised, Gamma-Poisson shrunk toward
+the chain rate, with a sequential log-likelihood-ratio (CUSUM-style) statistic. Causal by construction: the statistic
+for week w reads only weeks <= w."""
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import pandas as pd
+
+from . import config as C
+
+
+def weekly_counts(rows: pd.DataFrame, stores: list[str], types: list[str], weeks: list[str]) -> np.ndarray:
+    """rows needs columns store, itype, week. Returns an int array [store, type, week]."""
+    s_ix = {s: i for i, s in enumerate(stores)}
+    t_ix = {t: i for i, t in enumerate(types)}
+    w_ix = {w: i for i, w in enumerate(weeks)}
+    out = np.zeros((len(stores), len(types), len(weeks)), dtype=float)
+    sub = rows[rows["store"].isin(s_ix) & rows["itype"].isin(t_ix) & rows["week"].isin(w_ix)]
+    g = sub.groupby(["store", "itype", "week"]).size()
+    for (s, t, w), n in g.items():
+        out[s_ix[s], t_ix[t], w_ix[w]] = n
+    return out
+
+
+def run_statistic(counts: np.ndarray, exposure: np.ndarray, params: dict | None = None,
+                  tie_rank: np.ndarray | None = None) -> dict:
+    """Run the detector over every week in `counts`.
+
+    counts   [S, T, W] reports per store, type and week
+    exposure [S] relative store size (average weekly footfall)
+    tie_rank [S] order used to break ties between equal scores (store name order), lower first
+    Returns dict with arrays expected, llr, cusum, flag (all [S, T, W]).
+    """
+    p = dict(
+        history=C.HISTORY_WEEKS, prior=C.PRIOR_STRENGTH, mult=C.ALT_MULTIPLIER, h=C.LLR_THRESHOLD,
+        min_n=C.MIN_WEEK_COUNT, min_base=C.MIN_BASE_WEEKS, cooldown=C.COOLDOWN_WEEKS, cap=C.MAX_FLAGS_PER_WEEK,
+    )
+    if params:
+        p.update(params)
+    n_s, n_t, n_w = counts.shape
+    e = exposure.astype(float)
+    e_tot = e.sum()
+    chain = counts.sum(axis=0)                       # [T, W]
+    expected = np.zeros_like(counts)
+    llr = np.zeros_like(counts)
+    cusum = np.zeros_like(counts)
+    flag = np.zeros(counts.shape, dtype=bool)
+    state = np.zeros((n_s, n_t))
+    last_flag = np.full((n_s, n_t), -10**6)
+    ln_m = math.log(p["mult"])
+    for w in range(n_w):
+        lo = max(0, w - p["history"])
+        if w < p["min_base"]:
+            continue
+        hist_chain = chain[:, lo:w].sum(axis=1) / (e_tot * (w - lo))               # [T] chain rate per footfall
+        hist_n = counts[:, :, lo:w].sum(axis=2)                                    # [S, T]
+        hist_exp = e[:, None] * hist_chain[None, :] * (w - lo)                     # [S, T]
+        ratio = (hist_n + p["prior"]) / (hist_exp + p["prior"])                    # shrunk store/type multiplier
+        cur_chain_loo = (chain[:, w][None, :] - counts[:, :, w]) / np.maximum(e_tot - e, 1e-9)[:, None]  # [S, T]
+        factor = np.maximum(1.0, cur_chain_loo / np.maximum(hist_chain[None, :], 1e-12))
+        mu = e[:, None] * hist_chain[None, :] * ratio * factor
+        mu = np.maximum(mu, 1e-4)
+        n = counts[:, :, w]
+        step = n * ln_m - (p["mult"] - 1.0) * mu
+        state = np.maximum(0.0, state + step)
+        expected[:, :, w] = mu
+        llr[:, :, w] = step
+        cusum[:, :, w] = state
+        fire = (state >= p["h"]) & (n >= p["min_n"]) & ((w - last_flag) > p["cooldown"])
+        if fire.sum() > p["cap"]:
+            ss, tt = np.nonzero(fire)
+            tie = tie_rank[ss] if tie_rank is not None else ss
+            order = np.lexsort((tt, tie, -state[ss, tt]))[: p["cap"]]
+            fire = np.zeros_like(fire)
+            fire[ss[order], tt[order]] = True
+        flag[:, :, w] = fire
+        state = np.where(fire, 0.0, state)
+        last_flag = np.where(fire, w, last_flag)
+    return dict(expected=expected, llr=llr, cusum=cusum, flag=flag)

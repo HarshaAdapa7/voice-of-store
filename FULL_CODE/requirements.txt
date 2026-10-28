@@ -1,0 +1,6 @@
+# Pinned to the versions the submission files were generated and tested with (Python 3.13).
+# The code itself only needs Python >= 3.9 with these libraries at or above the minimums in pyproject.toml.
+numpy==2.5.3
+pandas==3.0.5
+scikit-learn==1.9.1
+scipy==1.18.1

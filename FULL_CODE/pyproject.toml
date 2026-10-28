@@ -1,0 +1,26 @@
+[project]
+name = "voice-of-store"
+version = "1.0.0"
+description = "R5 Voice-of-Store Engine: classify store feedback, detect emerging store issues, write weekly regional briefs."
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24", "pandas>=2.0", "scikit-learn>=1.3", "scipy>=1.10"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py39"
+src = ["src"]
+extend-exclude = ["tools"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "UP006", "UP007", "UP035", "UP045"]
