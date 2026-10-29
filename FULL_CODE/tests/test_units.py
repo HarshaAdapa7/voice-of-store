@@ -103,3 +103,25 @@ def test_dedup_clusters():
     s = summarise(rows)
     assert s == dict(reports=5, incidents=3, cross_channel=1)
     assert summarise(rows.iloc[0:0]) == dict(reports=0, incidents=0, cross_channel=0)
+
+
+def test_every_issue_type_has_a_next_step_and_safety_types_get_specific_ones():
+    from voice_of_store.routing import SAFETY_TYPES, next_step
+
+    for owner in ("Store Ops", "Supply Chain", "Merchandising", "Digital", "HR", "Unknown owner"):
+        assert next_step("IT99", owner, False).strip()
+    for t in SAFETY_TYPES:
+        assert "today" in next_step(t, "Store Ops", False) or "quarantine" in next_step(t, "Merchandising", False).lower()
+    assert "rising at one store" in next_step("IT01", "Store Ops", True)
+
+
+def test_status_never_presents_a_report_as_established_fact():
+    from voice_of_store.routing import verification_status
+
+    for tier in ("UNVERIFIED", "CORROBORATED", "POSSIBLE SYSTEMIC"):
+        for itype in ("IT10", "IT01"):
+            text = verification_status(itype, tier).lower()
+            assert (
+                "unverified" in text or "not a verified" in text or "to be verified" in text
+            ) and "confirmed incident" not in text
+    assert "allegation" in verification_status("IT04", "UNVERIFIED")

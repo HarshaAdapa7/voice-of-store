@@ -9,11 +9,12 @@ from pathlib import Path
 import pandas as pd
 
 from .. import config as C
-from ..brief import build_region_week, severity_rank, trend_arrow
+from ..brief import build_region_week, severity_rank, trend_arrow, when_text
 from ..classify import FeedbackClassifier
 from ..io import Data, load_data
 from ..pipeline import prepare_rows
 from ..report import time_split_validation, wilson
+from ..routing import SAFETY_TYPES, action_window, next_step, verification_status
 from ..stores import StoreResolver
 from ..text import clean_input, redact
 
@@ -117,8 +118,13 @@ class AppState:
                 for i in ids
                 if i in by_id.index
             ]
+            owner = str(self.data.taxonomy.loc[f.issue_type_id, "owner_function"])
             out.append(
                 dict(
+                    owner_window=action_window("high", f.issue_type_id, True),
+                    next_step=next_step(f.issue_type_id, owner, True),
+                    status=verification_status(f.issue_type_id, self._evidence_tier(ev)),
+                    change=self._change(f.store_id, f.issue_type_id, week),
                     store_id=f.store_id,
                     store=self.store_name.get(f.store_id, f.store_id),
                     region=self.store_region.get(f.store_id),
@@ -130,6 +136,48 @@ class AppState:
                 )
             )
         return out
+
+    @staticmethod
+    def _evidence_tier(evidence: list[dict]) -> str:
+        """Independent means different wording in at least two channels, or three different texts; copies do not count."""
+        texts = {e["text"] for e in evidence}
+        channels = {e["channel"] for e in evidence}
+        return "CORROBORATED" if (len(channels) >= 2 and len(texts) >= 2) or len(texts) >= 3 else "UNVERIFIED"
+
+    def _change(self, store_id: str, issue_type: str, week: str) -> dict:
+        """What changed, where and how quickly, from the same counts the detector used (all values are as of `week`)."""
+        counts = self._counts.get((store_id, issue_type), pd.Series(dtype=int))
+        chain = self._chain.get(issue_type, pd.Series(dtype=int))
+        i = self.weeks.index(week)
+        prior = self.weeks[max(0, i - 8) : i]
+        history = [int(counts.get(w, 0)) for w in prior]
+        base = sum(history) / len(history) if history else 0.0
+        now = int(counts.get(week, 0))
+        chain_now = int(chain.get(week, 0))
+        chain_base = sum(int(chain.get(w, 0)) for w in prior) / len(prior) if prior else 0.0
+        r = self.rows
+        mine = r[(r["store"] == store_id) & (r["itype"] == issue_type) & (r["week"] == week)]["created_at"]
+        first, last = (mine.min(), mine.max()) if len(mine) else (None, None)
+        span = max(1, int((last - first).days) + 1) if first is not None else 0
+        local = chain_now <= 1.5 * max(chain_base, 1.0)
+        text = (
+            f"{now} reports this week against a usual {base:.1f} a week over the previous {len(prior)} weeks "
+            f"(last weeks: {', '.join(map(str, history[-4:])) or 'none'}). First report {when_text(first)}, latest {when_text(last)}: "
+            f"{now} in {span} day(s). Chain-wide the issue is {chain_now} reports against a usual {chain_base:.0f}, "
+            f"so this is {'local to this store' if local else 'also rising across the chain'}."
+        )
+        return dict(
+            this_week=now,
+            usual_per_week=round(base, 1),
+            recent_weeks=history[-4:],
+            first_report=when_text(first) if first is not None else None,
+            latest_report=when_text(last) if last is not None else None,
+            days_span=span,
+            chain_this_week=chain_now,
+            chain_usual=round(chain_base, 1),
+            local_only=bool(local),
+            summary=text,
+        )
 
     def series(self, store_id: str, issue_type: str) -> dict:
         counts = self._counts.get((store_id, issue_type), pd.Series(dtype=int))
@@ -185,6 +233,8 @@ class AppState:
                     count=len(g),
                     previous=n_prev,
                     trend=trend_arrow(len(g), n_prev),
+                    next_step=next_step(itype, str(tax.loc[itype, "owner_function"]), False),
+                    safety=itype in SAFETY_TYPES,
                     quotes=[redact(t[:200]) for t in g.sort_values("conf", ascending=False)["text"].drop_duplicates().head(2)],
                 )
             )

@@ -113,6 +113,16 @@ FULL_CODE/
 Data flow: read folder → resolve stores → train on public labels dated before the cutoff → predict rows → weekly counts →
 statistic → flags with evidence → briefs.
 
+## Requirement coverage (FR-07 to FR-11)
+
+| Requirement | Where it is done |
+|---|---|
+| FR-07 high severity regardless of volume; dedicated escalation; allegation is not a verified incident | `routing.py`: safety, allergen, hygiene, misconduct types never below `high`, action window "same day", written rule on every brief. Safety types are never cut by the top-5 limit (shown as "safety escalation"). Every entry carries a status such as "Unverified serious allegation: a single source, not confirmed" and no wording presents a report as fact (`test_status_never_presents_a_report_as_established_fact`). |
+| FR-08 evidence, counts, stores, channels, timing, independence, confidence | Each brief entry shows quotes with channel and time, report count, incidents (copies within 72 hours count once), channel split, stores, first and latest report, a confidence score and the verification tier. A copy of one text does not corroborate itself (`_tier`). |
+| FR-09 owner, severity, escalation rule, evidence, recommended next step | Owner comes from the supplied taxonomy; each issue shows severity, the action window, evidence and a recommended next step (specific for each safety type, by owner otherwise). |
+| FR-10 unverified feedback and store size | Every page says feedback is unverified. The detector divides by each store's average weekly footfall; briefs show reports per 10,000 weekly visits. Limitation disclosed on the page: only average footfall exists, not per-store transaction counts, so rates are approximate. |
+| FR-11 low-volume emerging issues | The detector flags a store rising above its own normal rate with as few as 2 reports, outside the top 5. Each flag explains what changed (this week against usual), where (store), how quickly (first and latest report, days, recent weeks), whether it is local or chain-wide, and cites the evidence. |
+
 ## Causal (as-of) statement
 
 Each week's flags use only rows with `created_at` before the next Monday 00:00 (up to that week's Sunday 23:59:59). The

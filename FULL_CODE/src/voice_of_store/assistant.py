@@ -183,6 +183,10 @@ class Assistant:
                 ]
                 if e["emerging"]:
                     lines.append("Emerging at: " + ", ".join(e["emerging"]))
+                if e.get("status"):
+                    lines.append(e["status"])
+                if e.get("next_step"):
+                    lines.append("Next step: " + e["next_step"])
                 items.append(dict(title=f"{r}: {e['issue']} ({e['severity']}) {e['trend']}", lines=lines))
         head = (
             f"Top issues for {region or 'every region'}, week of {week}:"
@@ -200,7 +204,9 @@ class Assistant:
         items = [
             dict(
                 title=f"{f['issue']} at {f['store']}",
-                lines=[f"{f['owner']} · {f['region']} · confidence score {f['confidence']} · review within 48 hours"],
+                lines=[f"{f['owner']} · {f['region']} · confidence score {f['confidence']} · review within 48 hours"]
+                + ([f"What changed: {f['change']['summary']}"] if f.get("change") else [])
+                + ([f"Next step: {f['next_step']}"] if f.get("next_step") else []),
             )
             for f in flags
         ]

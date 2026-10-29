@@ -30,3 +30,4 @@ input[type=search]{font:inherit;color:var(--fg);background:var(--card);border:1p
 #main:focus{outline:none}.msg[aria-busy=true]{color:var(--mut)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media print{.skip,#chips,#askform{display:none}}
+.next{margin-top:6px;font-size:13px}

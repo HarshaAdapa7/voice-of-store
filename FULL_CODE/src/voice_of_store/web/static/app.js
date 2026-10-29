@@ -44,12 +44,16 @@ async function showBrief() {
   const box = $("brief");
   if (!d.entries.length) { box.replaceChildren(el("p", {}, "No actionable issues this week.")); return; }
   box.replaceChildren(...d.entries.map((e, i) => el("section", {class: "card sev-" + e.severity},
-    el("h2", {}, (i + 1) + ". " + e.issue, el("span", {class: "trend", title: "vs last week"}, e.trend)),
+    el("h2", {}, (i + 1) + ". " + e.issue + (e.beyond_top5 ? " (safety escalation, shown beyond the top 5)" : ""), el("span", {class: "trend", title: "vs last week"}, e.trend)),
     el("div", {class: "meta"}, el("b", {}, e.owner), " · severity ", el("b", {}, e.severity), " · ", e.tier, " · act: ", e.window),
     el("div", {class: "meta"}, e.count + " reports in " + e.dedup.incidents + " incident(s), " + e.dedup.cross_channel +
        " seen in 2+ channels (" + e.prev_count + " last week) · " + e.n_stores + " store(s): " + e.stores.map((s) => s[0] + " (" + s[1] + ")").join(", ")),
+    el("div", {class: "meta"}, e.status + " Confidence score " + e.confidence + " · channels: " + e.by_channel.map((c) => c[0] + " " + c[1]).join(", ") +
+       " · first " + e.first_seen + ", latest " + e.last_seen),
+    el("div", {class: "meta"}, "Per 10,000 weekly visits: " + (Object.entries(e.rates).filter((x) => x[1] !== null).map((x) => x[0] + " " + x[1]).join(", ") || "not available")),
     e.emerging.length ? el("div", {class: "em"}, "Emerging at: " + e.emerging.join(", ")) : "",
-    el("ul", {}, ...e.quotes.map((q) => el("li", {}, el("span", {class: "ch"}, q[0]), "“" + q[1] + "”"))))));
+    el("ul", {}, ...e.quotes.map((q) => el("li", {}, el("span", {class: "ch"}, q[0] + " · " + q[2]), "“" + q[1] + "”"))),
+    el("div", {class: "next"}, el("b", {}, "Next step: "), e.next_step))));
 }
 
 async function showFlags() {
@@ -62,9 +66,12 @@ async function showFlags() {
     const s = await api("/api/series?store_id=" + encodeURIComponent(f.store_id) + "&issue_type=" + encodeURIComponent(f.issue_type));
     cards.push(el("section", {class: "card sev-high"},
       el("h2", {}, f.issue + " at " + f.store),
-      el("div", {class: "meta"}, f.owner + " · " + (f.region || "") + " · confidence " + f.confidence + " · review within 48 hours"),
+      el("div", {class: "meta"}, f.owner + " · " + (f.region || "") + " · confidence " + f.confidence + " · review within 48 hours" + (f.owner_window === "same day" ? " (safety type: same day)" : "")),
+      el("div", {class: "em"}, "What changed: " + f.change.summary),
+      el("div", {class: "meta"}, f.status),
       seriesSvg(s), el("div", {class: "meta"}, "Bars: reports per week at this store (red = flagged week)."),
-      el("ul", {}, ...f.evidence.map((q) => el("li", {}, el("span", {class: "ch"}, q.channel), "“" + q.text + "”")))));
+      el("ul", {}, ...f.evidence.map((q) => el("li", {}, el("span", {class: "ch"}, q.channel), "“" + q.text + "”"))),
+      el("div", {class: "next"}, el("b", {}, "Next step: "), f.next_step)));
   }
   box.replaceChildren(...cards);
 }
@@ -109,7 +116,8 @@ async function showStore() {
   const cards = o.top.map((t) => el("section", {class: "card sev-" + t.severity},
     el("h2", {}, t.issue, el("span", {class: "trend"}, t.trend)),
     el("div", {class: "meta"}, el("b", {}, t.owner), " · severity ", el("b", {}, t.severity), " · " + t.count + " reports (" + t.previous + " last week)"),
-    el("ul", {}, ...t.quotes.map((q) => el("li", {}, "“" + q + "”")))));
+    el("ul", {}, ...t.quotes.map((q) => el("li", {}, "“" + q + "”"))),
+    el("div", {class: "next"}, el("b", {}, "Next step: "), t.next_step)));
   $("storeview").replaceChildren(
     el("h2", {}, o.name + " · " + o.region),
     el("div", {class: "meta"}, o.reports_this_week + " actionable reports this week, " + o.reports_previous_week + " the week before"),

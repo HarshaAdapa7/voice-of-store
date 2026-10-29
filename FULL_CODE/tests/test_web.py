@@ -44,7 +44,16 @@ class StubState:
                 trend="→",
                 prev_count=0,
                 emerging=[],
-                quotes=[("in_app", XSS)],
+                beyond_top5=False,
+                quotes=[("in_app", XSS, "Mon 03 Aug 09:00")],
+                status="Unverified serious allegation: a single source, not confirmed.",
+                next_step="Store manager reads the temperature log today.",
+                safety=True,
+                confidence=0.9,
+                first_seen="Mon 03 Aug 09:00",
+                last_seen="Mon 03 Aug 09:00",
+                by_channel=[("in_app", 1)],
+                rates={"Saffron Market Test": 1.0},
                 dedup=dict(reports=1, incidents=1, cross_channel=0),
             )
         ]
@@ -418,7 +427,8 @@ def test_real_classify_and_brief(real):
     assert j["store_named"] and j["owner"] == "Store Ops" and j["key_terms"]
     week = state.test_weeks[-1]
     b = c.get("/api/brief", query_string={"region": state.regions[0], "week": week}).get_json()
-    assert 1 <= len(b["entries"]) <= 5
+    assert 1 <= len([e for e in b["entries"] if not e["beyond_top5"]]) <= 5
+    assert all(e["safety"] for e in b["entries"] if e["beyond_top5"])
     for e in b["entries"]:
         assert e["severity"] in ("low", "medium", "high", "critical") and e["dedup"]["incidents"] >= 1
     assert c.get("/api/validation").get_json()["n_pred_actionable"] > 0
@@ -553,3 +563,22 @@ def test_fuzzed_requests_never_crash_or_reflect():
             assert "Traceback" not in body and (not junk.strip() or "<" not in junk or junk not in body)
     for raw in (b"", b"{", b"[]", b"null", b'{"message":' + b"[" * 500, b"\xff\xfe\x00"):
         assert c.post("/api/assistant", data=raw, headers={"Content-Type": "application/json"}).status_code == 400
+
+
+def test_real_flags_explain_what_changed_and_brief_shows_evidence_fields(real):
+    state, c = real
+    week = state.weeks[-1]
+    flags = c.get("/api/flags", query_string={"week": week}).get_json()["flags"]
+    assert flags, "the last week should carry at least one flag in the shipped submission"
+    for f in flags:
+        ch = f["change"]
+        assert ch["this_week"] >= 2 and ch["days_span"] >= 1 and "against a usual" in ch["summary"]
+        assert f["next_step"] and f["status"] and f["owner"]
+    b = c.get("/api/brief", query_string={"region": state.regions[0], "week": week}).get_json()["entries"]
+    for e in b:
+        assert e["next_step"] and e["status"] and e["first_seen"] and e["by_channel"] and 0 <= e["confidence"] <= 1
+        assert all(len(q) == 3 for q in e["quotes"])
+        if e["safety"] and e["tier"] == "UNVERIFIED":
+            assert "allegation" in e["status"]
+    page = c.get("/brief", query_string={"region": state.regions[0], "week": week}).get_data(as_text=True)
+    assert "Next step:" in page and "Per 10,000 weekly visits" in page and "approximation" in page
