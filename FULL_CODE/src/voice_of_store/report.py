@@ -11,9 +11,9 @@ from .io import Data, week_start_of
 from .stores import StoreResolver
 
 
-def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int = 9) -> dict:
-    """Train on labelled rows of the first `train_weeks` weeks, evaluate on the later labelled rows. Out of sample and
-    forward in time, so it is the closest local proxy for the hidden test weeks."""
+def split_predictions(data: Data, resolver: StoreResolver, train_weeks: int = 9):
+    """Train on labelled rows of the first `train_weeks` weeks and predict the later labelled rows. Out of sample and
+    forward in time, so it is the closest local proxy for the hidden test weeks. Returns (truth + features, predictions)."""
     fb = data.feedback.copy()
     fb["week"] = week_start_of(fb["created_at"])
     fb["store"] = resolver.resolve_frame(fb)
@@ -23,6 +23,13 @@ def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int 
     tr, te = m[m["week"] < cut], m[m["week"] >= cut]
     clf = FeedbackClassifier(data.taxonomy).fit(fb, tr[C.PRED_COLS])
     p = clf.predict(te, te["store"])
+    return te, p
+
+
+def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int = 9) -> dict:
+    """Aggregate scores of the time-split run (see `split_predictions`)."""
+    te, p = split_predictions(data, resolver, train_weeks)
+    n_train = int(len(data.labels) - len(te))
     mi = f1_score(te["issue_type_id"], p["issue_type_id"].values, average="macro")
     sv = f1_score(te["severity"], p["severity"].values, average="weighted")
     ac = f1_score(te["actionable"], p["actionable"].values)
@@ -30,7 +37,7 @@ def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int 
     hi = pred_act & np.isin(p["severity"].values, ["high", "critical"])
     truth_act = te["actionable"].values == 1
     return dict(
-        n_train=len(tr),
+        n_train=n_train,
         n_test=len(te),
         issue_macro_f1=mi,
         severity_weighted_f1=sv,

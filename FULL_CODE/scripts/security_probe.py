@@ -42,6 +42,12 @@ def main() -> int:
     check("over-long URL refused", call("GET", "/api/health?a=" + "b" * 700)[0] == 414)
     check("unknown query parameter refused", call("GET", "/api/meta?debug=1")[0] == 400)
     check("export week is allow-listed", call("GET", "/api/export?week=x%0d%0aSet-Cookie:a=1")[0] == 400)
+    s, h, b = call("GET", "/report")
+    check(
+        "report page has no script and a locked-down CSP",
+        s == 200 and "<script" not in b.lower() and "script-src" not in h.get("Content-Security-Policy", ""),
+    )
+    check("report refuses query parameters", call("GET", "/report?debug=1")[0] == 400)
     check("bad Host refused", call("GET", "/api/health", headers={"Host": "evil.example"})[0] == 400)
     check(
         "cross-origin POST refused",

@@ -27,3 +27,6 @@ toward the chain rate, and a flag needs two reports).
 - **Stores:** pick a store: this week vs last, weekly trend, flags and top issues with quotes. Faster than scanning a regional brief when a manager asks "what about my store?"
 - **Ask:** type "How is <locality> doing?", "Any emerging issues in South?", "Who handles payment failures?" or "How accurate is this?". Say plainly: it is rule-based, no LLM, no data leaves the machine; unknown questions get an honest "I can't tell".
 - **Export and keyboard:** "Download flags (CSV)" on the Emerging tab; arrow keys switch tabs; up-arrow recalls an earlier question in Ask; "Find a store" filters the store list. Responses are gzip-compressed (the script is about 3x smaller on the wire).
+
+## Evaluation report (60 s)
+Precision tab > "Open the full evaluation report". Walk it top to bottom: the precision statement; escalation precision by confidence (stricter threshold, fewer but surer); **safety recall 88.1%, the honest weak spot**; the weakest types; the worked incident flagged one week before the naive rule; reports collapsing into incidents; limits. Judges trust a team that shows its weaknesses first.

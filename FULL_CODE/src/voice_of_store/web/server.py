@@ -118,6 +118,16 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
         resp.headers["Content-Disposition"] = f'attachment; filename="r5_flags_{week}.csv"'  # week is allow-listed
         return resp
 
+    @app.get("/report")
+    def report_page():
+        _only()
+        return Response(state.report_html(), mimetype="text/html")
+
+    @app.get("/api/report")
+    def get_report():
+        _only()
+        return jsonify(state.report())
+
     @app.get("/api/validation")
     def get_validation():
         _only()

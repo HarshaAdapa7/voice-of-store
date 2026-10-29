@@ -8,10 +8,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from .analysis import build_report
 from .brief import build_region_week, render_html
-from .io import Data, load_data
+from .io import Data, load_data, load_incidents
 from .pipeline import prepare_rows
 from .report import time_split_validation, wilson
+from .report_page import render_report
 from .routing import ESCALATION_RULE
 from .stores import StoreResolver
 
@@ -35,7 +37,7 @@ def write_briefs(data: Data, rows: pd.DataFrame, flags: pd.DataFrame, out: Path,
     (out / "index.html").write_text(
         "<!doctype html><meta charset='utf-8'><title>Weekly briefs</title>"
         "<body style='font-family:system-ui;max-width:700px;margin:auto;padding:16px'>"
-        f"<h1>Weekly regional briefs</h1><ul>{links}</ul><p>{ESCALATION_RULE}</p></body>",
+        f"<h1>Weekly regional briefs</h1><p><a href='../report.html'>Full evaluation report</a></p><ul>{links}</ul><p>{ESCALATION_RULE}</p></body>",
         encoding="utf-8",
     )
     return len(index)
@@ -69,12 +71,23 @@ def write_validation(data: Data, resolver: StoreResolver, out: Path) -> dict:
     return v
 
 
+def write_report(
+    data: Data, resolver: StoreResolver, rows: pd.DataFrame, flags: pd.DataFrame, v: dict, data_dir: Path, out: Path
+) -> dict:
+    """The full evaluation report as JSON and as one self-contained HTML page."""
+    rep = build_report(data, resolver, rows, flags, v, load_incidents(data_dir))
+    (out / "report.json").write_text(json.dumps(rep), encoding="utf-8")
+    (out / "report.html").write_text(render_report(rep), encoding="utf-8")
+    return rep
+
+
 def run(data_dir: Path, submission_dir: Path, out_dir: Path, from_week_index: int) -> int:
     data = load_data(data_dir)
     resolver = StoreResolver(data.stores)
     flags = pd.read_csv(submission_dir / "R5_emerging_flags.csv", dtype=str)
     rows = prepare_rows(data, data.feedback["created_at"].max() + pd.Timedelta(seconds=1), resolver)
     count = write_briefs(data, rows, flags, out_dir / "briefs", from_week_index)
-    write_validation(data, resolver, out_dir)
-    log.info("wrote %d briefs to %s and the validation files to %s", count, out_dir / "briefs", out_dir)
+    v = write_validation(data, resolver, out_dir)
+    write_report(data, resolver, rows, flags, v, data_dir, out_dir)
+    log.info("wrote %d briefs to %s and the validation and report files to %s", count, out_dir / "briefs", out_dir)
     return count

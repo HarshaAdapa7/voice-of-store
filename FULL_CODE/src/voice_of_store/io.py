@@ -124,3 +124,14 @@ def validate_flags(flags: pd.DataFrame) -> list[str]:
     if len(flags) and not flags["issue_type_id"].isin(ISSUE_TYPES).all():
         errs.append("unknown issue_type_id")
     return errs
+
+
+def load_incidents(folder: Path) -> pd.DataFrame | None:
+    """The public worked-example incident file, used only by the reports. Never needed by the detector; None if absent."""
+    path = Path(folder) / "emerging_incidents_train.csv"
+    if not path.exists():
+        return None
+    inc = _read(path, dtype=str)
+    need = ["incident_id", "store_ids", "issue_type_id", "onset_week_start", "naive_detect_week_start"]
+    _need_columns(inc, need, "emerging_incidents_train.csv")
+    return inc

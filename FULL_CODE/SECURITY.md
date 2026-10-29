@@ -56,7 +56,7 @@ Open an issue on the team repository or contact the team lead. Do not post explo
 - Body must be exactly `{"message": "<string>"}` (1-300 characters, no extra fields); same JSON-only, Origin, Sec-Fetch-Site, rate-limit (own bucket) and login checks as the classify endpoint.
 - Replies are built from fixed templates and data values, never from the question text; the UI renders them with `textContent`. Questions are not logged.
 - `GET /api/store` uses the same allow-lists as the other query endpoints (store id and week must be in the start-up lists).
-- Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (30 checks, run against this build: all passed).
+- Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (32 checks, run against this build: all passed).
 
 ## Hardening round 2 (what was added and why)
 | Gap closed | Control | Test |
@@ -73,3 +73,6 @@ Open an issue on the team repository or contact the team lead. Do not post explo
 review, tests, a fuzzer and a live attack script, and keeps the attack surface small (no database, uploads, cookies, outbound
 calls, LLM or pickle). Still open: no independent penetration test, `pip-audit` not run (needs internet), one shared login, TLS must be
 supplied by a reverse proxy, and per-process rate limits (one worker).
+
+## Report pages
+`GET /report` and `GET /api/report` are read-only, take no parameters (any query string gets 400), need the same login as every other route, and the page has inline CSS and SVG only: no script, CSP `default-src 'none'`. Every value is escaped (`test_report_page_escapes_every_value_and_has_no_script`). `scripts/security_probe.py` checks both (32 checks, all passed).

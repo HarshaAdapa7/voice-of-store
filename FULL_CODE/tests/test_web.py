@@ -79,6 +79,12 @@ class StubState:
     def issue_catalogue(self):
         return []
 
+    def report_html(self):
+        return "<!doctype html><title>r</title><p>report</p>"
+
+    def report(self):
+        return dict(validation=dict(classification=0.9))
+
     def classify(self, text, channel):
         if text == "boom":
             raise RuntimeError("secret internal detail /etc/passwd")
@@ -582,3 +588,27 @@ def test_real_flags_explain_what_changed_and_brief_shows_evidence_fields(real):
             assert "allegation" in e["status"]
     page = c.get("/brief", query_string={"region": state.regions[0], "week": week}).get_data(as_text=True)
     assert "Next step:" in page and "Per 10,000 weekly visits" in page and "approximation" in page
+
+
+def test_report_routes_are_strict_and_script_free(client):
+    r = client.get("/report")
+    assert r.status_code == 200 and r.mimetype == "text/html"
+    assert (
+        "script-src" not in r.headers["Content-Security-Policy"] and "default-src 'none'" in r.headers["Content-Security-Policy"]
+    )
+    assert client.get("/api/report").get_json()["validation"]["classification"] == 0.9
+    assert client.get("/report?x=1").status_code == 400 and client.get("/api/report?x=1").status_code == 400
+    assert client.post("/report", json={}).status_code in (403, 405, 415)
+
+
+def test_report_needs_login_when_configured():
+    c = _auth_client()
+    assert c.get("/report").status_code == 401 and c.get("/api/report").status_code == 401
+    assert c.get("/report", headers=_basic("judge", "correct horse battery")).status_code == 200
+
+
+def test_real_report_endpoints(real):
+    _, c = real
+    page = c.get("/report")
+    assert page.status_code == 200 and b"Precision statement" in page.data and b"<script" not in page.data
+    assert "escalation" in c.get("/api/report").get_json()

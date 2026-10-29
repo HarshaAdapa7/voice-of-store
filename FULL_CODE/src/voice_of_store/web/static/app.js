@@ -90,7 +90,33 @@ async function showPrecision() {
       el("tr", {}, el("td", {}, "Severity weighted-F1"), el("td", {}, v.severity_weighted_f1.toFixed(3))),
       el("tr", {}, el("td", {}, "Actionable F1"), el("td", {}, v.actionable_f1.toFixed(3))),
       el("tr", {}, el("td", {}, "Classification score"), el("td", {}, v.classification.toFixed(3)))),
-    el("p", {class: "sub"}, "Trained on labelled rows of weeks 1-9, tested on labelled rows of weeks 10-13. The labelled sample over-represents rare issue types, so these describe the sample, not the whole stream. Feedback is unverified."));
+    el("p", {class: "sub"}, "Trained on labelled rows of weeks 1-9, tested on labelled rows of weeks 10-13. The labelled sample over-represents rare issue types, so these describe the sample, not the whole stream. Feedback is unverified."),
+    el("p", {}, el("a", {class: "btn", href: "/report", target: "_blank", rel: "noopener noreferrer"}, "Open the full evaluation report (printable)")),
+    el("div", {id: "reportbox", "aria-live": "polite"}, el("p", {class: "meta"}, "Loading the detailed report…")));
+  try { showReportSummary(await api("/api/report")); }
+  catch (e) { $("reportbox").replaceChildren(el("p", {class: "meta"}, "The detailed report is not available right now (" + e.message + ").")); }
+}
+
+function showReportSummary(r) {
+  const pct = (x) => (x === null ? "n/a" : (x * 100).toFixed(1) + "%");
+  const sr = r.escalation.safety_recall, dd = r.dedup, d = r.detection.incidents[0];
+  const rows = (arr) => arr.map((cells) => el("tr", {}, ...cells.map((c) => el("td", {}, c))));
+  $("reportbox").replaceChildren(
+    el("h2", {}, "Escalation precision by confidence score"),
+    el("table", {}, el("tr", {}, el("th", {}, "Score at least"), el("th", {}, "Escalated"), el("th", {}, "Truly actionable")),
+      ...rows(r.escalation.by_confidence.map((x) => [x.threshold, x.escalated, pct(x.precision)]))),
+    el("h2", {}, "Safety recall"),
+    el("p", {}, sr.caught + " of " + sr.truly_safety + " truly safety-type reports were escalated as a safety type (" + pct(sr.recall) + "). Missed: " +
+      (Object.entries(sr.missed_as).map((x) => x[1] + " as " + x[0]).join("; ") || "none") + "."),
+    el("h2", {}, "Weakest issue types"),
+    el("table", {}, el("tr", {}, el("th", {}, "Type"), el("th", {}, "Support"), el("th", {}, "F1")),
+      ...rows(r.classification.weakest.map((t) => [t.id + " " + t.name, t.support, t.f1]))),
+    el("h2", {}, "Detector on the public worked incident"),
+    el("p", {}, d ? d.incident + " (" + d.issue_type + "): onset " + d.onset + ", naive rule " + d.naive_detection + ", our first flag " + (d.our_first_flag || "never") +
+      (d.lead_weeks === null ? "" : ", lead " + d.lead_weeks + " week(s)") + ". One public incident only; the hidden three decide the real score." : "No worked incident file found."),
+    el("h2", {}, "De-duplication"),
+    el("p", {}, dd.reports.toLocaleString() + " actionable reports became " + dd.incidents.toLocaleString() + " incidents (" + dd.reports_per_incident + " per incident; " +
+      dd.cross_channel_incidents.toLocaleString() + " seen in 2+ channels). " + dd.note));
 }
 
 function weekBars(weeks, values, flagged) {

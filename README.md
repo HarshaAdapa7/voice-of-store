@@ -16,7 +16,7 @@ Hinglish, Tamil and Marathi (all in Latin script). This project:
    cites the highest-confidence evidence. At most 3 flags a week.
 3. **Writes a one-page brief per region per week** (top 5 issues, evidence quotes, affected stores, trend arrow, owner, severity,
    evidence tier, action window) and states the escalation rule on every page.
-4. **States precision**: out-of-sample, with intervals (`out/validation.md`).
+4. **States precision** and evaluates itself in a full report (`out/report.html`, also at `/report` in the demo and as a printable page): precision of escalations by confidence and by owner with intervals, safety-type recall, weakest issue types and mix-ups, severity confusion, per-channel quality, detector lead on the public worked incident, de-duplication statistics, a week-by-week table and a plain list of limits. Written by `python FULL_CODE/main.py briefs`.
 5. **Runs as a secure web demo** (`FULL_CODE/serve.py`): regional briefs, emerging-issue panel with weekly chart and evidence,
    a "try a comment" box with the key terms behind the prediction, the precision statement, and cross-channel de-duplication
    (reports of one event at the same store and type within 72 hours are shown as one incident). Flags can be downloaded as CSV (formula-injection safe). A **Stores** tab gives a
@@ -113,6 +113,15 @@ FULL_CODE/
 Data flow: read folder → resolve stores → train on public labels dated before the cutoff → predict rows → weekly counts →
 statistic → flags with evidence → briefs.
 
+## Reports (what each output is for)
+
+| Output | Where | Purpose |
+|---|---|---|
+| Weekly brief per region | `out/briefs/<week>/<region>.html`, `/brief` | Top 5 issues (plus any safety type beyond them), quotes with time, stores, trend, owner, severity, status, next step, escalation rule |
+| Evaluation report | `out/report.html`, `/report`, Precision tab | Precision statement, escalation precision, safety recall, weak spots, detection example, de-duplication, week by week, limits |
+| Flags for the week | Emerging tab, `/api/export` (CSV) | What changed, where, how quickly, evidence, next step |
+| Scored files | `submission/` | `R5_predictions.csv`, `R5_emerging_flags.csv`, `detector_cmd.txt` |
+
 ## Requirement coverage (FR-07 to FR-11)
 
 | Requirement | Where it is done |
@@ -139,7 +148,7 @@ DOM built with `textContent` only, escaped printable brief, host allow-list (DNS
 JSON-only POST (CSRF), allow-lists for every query value, fixed static-file table (no path traversal), body and text size
 limits, per-client rate limits with bounded memory, optional login (salted scrypt hash, failed-login limiter) and constant-time API key, generic errors with request ids,
 logs without feedback text, contact details masked before display, HSTS when behind HTTPS, no pickle anywhere, non-root
-container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (a single shared login, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. With the server running, `python FULL_CODE/scripts/security_probe.py` fires 30 attacks at it (30/30 refused or neutralised in the build check). Before exposing it, run
+container, `ruff` with the bandit rules. Full table, configuration and the honest list of what it does **not** do (a single shared login, no TLS termination, no independent penetration test): `FULL_CODE/SECURITY.md`. With the server running, `python FULL_CODE/scripts/security_probe.py` fires 32 attacks at it (32/32 refused or neutralised in the build check). Before exposing it, run
 `pip-audit -r FULL_CODE/requirements.txt` (needs internet) and put it behind a TLS-terminating reverse proxy.
 
 ## Results (what was measured, and what it means)
@@ -149,6 +158,7 @@ container, `ruff` with the bandit rules. Full table, configuration and the hones
 | Time-split validation (train weeks 1-9, test labelled rows of weeks 10-13) | classification 0.914: issue macro-F1 0.899, severity weighted-F1 0.913, actionable F1 0.944 | Out of sample and forward in time; the best local proxy |
 | Model choice (issue macro-F1, mean of three forward-in-time splits) | logistic regression 0.849, linear SVM 0.881, linear SVM with min_df=1 0.893 (chosen) | Same features and labels; the SVM won on every split. Its confidence is a softmax of margins: a ranking score, not a calibrated probability |
 | Organisers' baseline (keyword rules, from the pack README) | classification about 0.58, lead 0.33 on the training truth | Our worked-example lead is 0.50 and our time-split classification 0.914; different protocols, so read as direction, not a like-for-like gap |
+| Safety-type recall (time-split, 84 truly safety-type actionable records) | 74 caught (88.1%, 95% interval 79.5% to 93.4%) | The main known weakness; 6 were predicted as a non-safety type and 4 as not actionable. Listed in `out/report.html` |
 | Precision statement (time-split) | Marked actionable: 95.2% truly (95% interval 93.1%-96.7%); marked actionable and high/critical: 97.0% (92.6%-98.8%) | Sample over-represents rare types; not the full-stream rate |
 | Worked example (IT17, ST-D69EG) | first valid flag 2026-05-11, naive detector 2026-05-18: lead +1 week | One incident only; none of the three hidden ones are known |
 | Flag volume on the test half | 24 flags in 13 weeks (1.85 a week), budget is 3 | Planted incidents will add a few |

@@ -235,7 +235,7 @@ def _compress(resp: Response) -> None:
 def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
     path = request.path
     _compress(resp)
-    csp = PAGE_CSP if path in ("/", "/index.html") else BRIEF_CSP if path == "/brief" else JSON_CSP
+    csp = PAGE_CSP if path in ("/", "/index.html") else BRIEF_CSP if path in ("/brief", "/report") else JSON_CSP
     resp.headers["Content-Security-Policy"] = csp
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"

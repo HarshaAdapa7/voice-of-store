@@ -9,11 +9,13 @@ from pathlib import Path
 import pandas as pd
 
 from .. import config as C
+from ..analysis import build_report
 from ..brief import build_region_week, severity_rank, trend_arrow, when_text
 from ..classify import FeedbackClassifier
-from ..io import Data, load_data
+from ..io import Data, load_data, load_incidents
 from ..pipeline import prepare_rows
 from ..report import time_split_validation, wilson
+from ..report_page import render_report
 from ..routing import SAFETY_TYPES, action_window, next_step, verification_status
 from ..stores import StoreResolver
 from ..text import clean_input, redact
@@ -46,6 +48,8 @@ class AppState:
         self._memos: dict = {}
         self._validation: dict | None = None
         self._submission_dir = Path(submission_dir)
+        self._data_dir = Path(data_dir)
+        self._report: dict | None = None
 
     def _index_rows(self) -> None:
         """Build the lookups once so each request is a dictionary read, not a scan of 40,000 rows."""
@@ -77,6 +81,7 @@ class AppState:
         for week in self.test_weeks:
             for region in self.regions:
                 self.brief(region, week)
+        self.report()
 
     # ---- queries (all arguments are validated by the caller against these allow-lists) ----
     def meta(self) -> dict:
@@ -296,3 +301,21 @@ class AppState:
                     v["ci_actionable_high"] = wilson(k2, v["n_pred_actionable_high"])
                     self._validation = v
             return self._validation
+
+    def report(self) -> dict:
+        """The evaluation report: read from out/report.json when `main.py briefs` wrote it, otherwise computed once."""
+        path = self._submission_dir.parent / "out" / "report.json"
+        with self._lock:
+            if self._report is None:
+                if path.exists():
+                    self._report = json.loads(path.read_text(encoding="utf-8"))
+        if self._report is None:
+            computed = build_report(
+                self.data, self.resolver, self.rows, self.flags, self.validation(), load_incidents(self._data_dir)
+            )
+            with self._lock:
+                self._report = computed
+        return self._report
+
+    def report_html(self) -> str:
+        return render_report(self.report())
