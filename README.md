@@ -28,7 +28,9 @@ Users: regional ops heads and function owners (Store Ops, Supply Chain, Merchand
 
 ## How to run
 
-Python 3.9 or newer (tested on 3.13). No internet and no API keys are needed at run time.
+**Python 3.12 or newer** (tested on 3.13; the pinned pandas 3 and numpy 2.5 do not install on older Pythons). No internet and no API keys are needed at run time.
+
+**Step 0, before anything else: add the data.** The zip does not contain the pack's data files (they are large and git-ignored by design). Create a folder named `data` next to `FULL_CODE` and copy into it `feedback.csv`, `feedback_labels_train.csv`, `store_master.csv`, `issue_taxonomy.csv`, `week_calendar.csv` and `emerging_incidents_train.csv` from the organisers' pack. Without them the commands stop with `error: missing data file: ...`; the tests skip the data-dependent cases.
 
 Quick start in VS Code: open the project folder, open a terminal (Terminal > New Terminal), then
 
@@ -171,6 +173,6 @@ container, `ruff` with the bandit rules. Full table, configuration and the hones
   production-server path is reviewed but not run there; the Dockerfile was written but not built there.
 - Language handling relies on character n-grams, so unseen transliteration spellings and very short texts are the main error
   source. A multilingual encoder was not tried.
-- Not tested on Python 3.9 specifically (code avoids newer syntax); tested on 3.13 only. The synthetic data means privacy
+- Tested on Python 3.13 only; 3.12 is the stated minimum because the pinned libraries need it. The synthetic data means privacy
   rules (DPDP) are design discipline here, not a live obligation.
 - Next steps: a reporter-level key for true corroboration, store-level seasonality, an encoder comparison, analyst feedback loop.

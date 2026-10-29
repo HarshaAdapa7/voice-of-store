@@ -28,13 +28,19 @@ log = logging.getLogger("detect")
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Voice-of-Store emerging-issue detector (one week, as-of)")
-    ap.add_argument("--feedback", required=True, help="path to feedback.csv; other data files are read from its folder")
+    ap.add_argument(
+        "--feedback",
+        required=True,
+        help="path to feedback.csv, or to the folder that holds it; other data files are read from that folder",
+    )
     ap.add_argument("--as-of", dest="as_of", required=True, help="YYYY-MM-DD, any day of the week to flag")
     ap.add_argument("--out", required=True, help="flags file to write")
     a = ap.parse_args()
     setup_logging()
     try:
         fb_path = Path(a.feedback).resolve()
+        if fb_path.is_dir():  # the jury may pass the folder instead of the file
+            fb_path = fb_path / "feedback.csv"
         data = load_data(fb_path.parent, fb_path)
         monday = monday_of(a.as_of)
         resolver = StoreResolver(data.stores)

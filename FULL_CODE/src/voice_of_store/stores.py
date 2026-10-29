@@ -36,4 +36,6 @@ class StoreResolver:
         return hits[0] if len(hits) == 1 else None
 
     def resolve_frame(self, df: pd.DataFrame) -> pd.Series:
-        return pd.Series([self.resolve(s, t) for s, t in zip(df["store_id"], df["text"])], index=df.index, dtype=object)
+        return pd.Series(
+            [self.resolve(s, t) for s, t in zip(df["store_id"], df["text"], strict=False)], index=df.index, dtype=object
+        )

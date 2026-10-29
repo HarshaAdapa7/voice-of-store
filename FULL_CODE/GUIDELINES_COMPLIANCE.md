@@ -60,6 +60,6 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 ## Known gaps, stated plainly
 - `pip-audit` and the `waitress` production-server path were not run (no internet in the build sandbox).
 - The Dockerfile was written and reviewed but not built.
-- Python 3.9 was not available to test; the code avoids newer syntax but was run on 3.13 only.
+- Tested on Python 3.13 only; the stated minimum is 3.12 (the pinned libraries need it).
 - No independent security test; the controls are checked by this project's own tests and by `scripts/security_probe.py` against a running instance.
 - `mypy` is clean and 121 tests pass on Python 3.13 in the build sandbox.

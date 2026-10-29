@@ -36,8 +36,8 @@ class AppState:
         self.weeks = d.calendar["week_start"].tolist()
         self.test_weeks = d.calendar[d.calendar["labelled_period"] == "test"]["week_start"].tolist()
         self.regions = sorted(d.stores["region"].unique())
-        self.store_name = dict(zip(d.stores["store_id"], d.stores["store_name"]))
-        self.store_region = dict(zip(d.stores["store_id"], d.stores["region"]))
+        self.store_name = dict(zip(d.stores["store_id"], d.stores["store_name"], strict=False))
+        self.store_region = dict(zip(d.stores["store_id"], d.stores["region"], strict=False))
         self.types = d.taxonomy.reset_index()[["issue_type_id", "issue_type", "owner_function", "policy_severity_floor"]]
         self._lock = threading.Lock()
         self._index_rows()

@@ -78,7 +78,7 @@ def emit_flags(
         i = w_ix[w]
         ss, tt = np.nonzero(res["flag"][:, :, i])
         wk_rows = rows[rows["week"] == w]
-        for s, t in zip(ss, tt):
+        for s, t in zip(ss, tt, strict=False):
             sid, ty = stores[s], types[t]
             ev = select_evidence(wk_rows, sid, ty, w, str((monday_of(w) + pd.Timedelta(days=7)).date()), resolver)
             if len(ev) < C.MIN_WEEK_COUNT:

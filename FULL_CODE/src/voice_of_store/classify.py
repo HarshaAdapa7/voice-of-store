@@ -90,7 +90,7 @@ class FeedbackClassifier:
         offset = len(char_v.vocabulary_)
         names = word_v.get_feature_names_out()
         row = x.tocoo()
-        contrib = [(names[j - offset], float(v * coef[j])) for j, v in zip(row.col, row.data) if j >= offset]
+        contrib = [(names[j - offset], float(v * coef[j])) for j, v in zip(row.col, row.data, strict=False) if j >= offset]
         contrib = [c for c in contrib if c[1] > 0]
         return sorted(contrib, key=lambda kv: -kv[1])[:top]
 

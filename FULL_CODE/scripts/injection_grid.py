@@ -89,7 +89,7 @@ def main() -> None:
     grids = [dict()]
     if a.grid:
         keys = dict(h=[2.0, 3.0, 4.0, 5.0], mult=[3.0, 4.0, 6.0], prior=[2.0, 3.0, 6.0], history=[8, 10, 14], cooldown=[2, 4])
-        grids = [dict(zip(keys, v)) for v in itertools.product(*keys.values())]
+        grids = [dict(zip(keys, v, strict=False)) for v in itertools.product(*keys.values())]
     for g in grids:
         fpw, bands, mean_lead = run(counts, foot, g, a.n, a.seed)
         flood = min(1.0, 3.0 / fpw) if fpw > 0 else 1.0

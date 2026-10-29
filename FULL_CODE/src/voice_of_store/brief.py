@@ -74,7 +74,7 @@ def build_region_week(
     """Top-5 issue entries for one region and week. `rows` needs store (resolved), itype, severity, actionable, week,
     text, channel, conf, created_at."""
     ids = set(stores[stores["region"] == region]["store_id"])
-    names = dict(zip(stores["store_id"], stores["store_name"]))
+    names = dict(zip(stores["store_id"], stores["store_name"], strict=False))
     prev_week = str((monday_of(week) - pd.Timedelta(days=7)).date())
     base = rows[(rows["actionable"] == 1) & ~rows["itype"].isin(C.NON_ISSUE) & rows["store"].isin(ids)]
     cur, prev = base[base["week"] == week], base[base["week"] == prev_week]

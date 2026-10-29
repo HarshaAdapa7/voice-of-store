@@ -152,3 +152,35 @@ def test_classifier_policy(data_dir):  # T10-T14: severity floor, non-issue low,
     assert (p.loc[p["issue_type_id"].isin(C.NON_ISSUE), "actionable"] == 0).all()
     no_store = sample["store"].isna().values & ~p["issue_type_id"].isin(C.STORELESS_OK).values
     assert (p.loc[no_store, "actionable"] == 0).all()
+
+
+def test_detector_accepts_a_folder_or_the_file(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import pytest
+
+    root = Path(__file__).resolve().parents[2]
+    data = root / "data"
+    if not (data / "feedback.csv").exists():
+        pytest.skip("pack data not present")
+    outs = []
+    for arg in (data, data / "feedback.csv"):
+        out = tmp_path / f"{len(outs)}.csv"
+        subprocess.run(  # noqa: S603
+            [
+                sys.executable,
+                str(root / "FULL_CODE" / "detect.py"),
+                "--feedback",
+                str(arg),
+                "--as-of",
+                "2026-09-21",
+                "--out",
+                str(out),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        outs.append(out.read_bytes())
+    assert outs[0] == outs[1]

@@ -29,7 +29,7 @@ def select_evidence(
     r = week_rows
     in_week = (r["created_at"] >= pd.Timestamp(week_start)) & (r["created_at"] < pd.Timestamp(week_end_excl))
     ok = r[in_week & (r["itype"] == itype)]
-    keep = [belongs(s, t, store_id, resolver.locality) for s, t in zip(ok["store_id"], ok["text"])]
+    keep = [belongs(s, t, store_id, resolver.locality) for s, t in zip(ok["store_id"], ok["text"], strict=False)]
     ok = ok[keep].sort_values(["conf", "feedback_id"], ascending=[False, True], kind="mergesort")
     return ok["feedback_id"].drop_duplicates().head(limit).tolist()
 
