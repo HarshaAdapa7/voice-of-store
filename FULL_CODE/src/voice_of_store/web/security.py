@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import hmac
 import logging
 import os
@@ -29,7 +30,8 @@ log = logging.getLogger("voice_of_store.web")
 JSON_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 PAGE_CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
-    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; "
+    "require-trusted-types-for 'script'; trusted-types 'none'"
 )
 BRIEF_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; "
@@ -42,6 +44,7 @@ class SecurityConfig:
     allowed_hosts: frozenset = frozenset({"127.0.0.1", "localhost", "[::1]"})
     max_body_bytes: int = 8 * 1024
     max_text_chars: int = 2000
+    max_url_chars: int = 512  # path plus query string; every legitimate request is far shorter
     rate_per_minute: int = 120  # all endpoints, per client address
     classify_per_minute: int = 20  # the one POST endpoint
     assistant_per_minute: int = 40  # POST /api/assistant
@@ -107,6 +110,12 @@ def _host_only(value: str) -> str:
     if v.startswith("["):  # [::1]:8000
         return v.split("]")[0] + "]"
     return v.split(":")[0]
+
+
+def _loggable(value: str, limit: int = 120) -> str:
+    """A request path made safe for a log line: no control characters (log forging), bounded length."""
+    cleaned = "".join(c if c.isprintable() and c not in "\r\n" else "?" for c in value)
+    return cleaned[:limit] + ("..." if len(cleaned) > limit else "")
 
 
 def _err(status: int, message: str) -> Response:
@@ -185,6 +194,8 @@ def _guard(cfg: SecurityConfig, limiter: RateLimiter) -> Response | None:
     g.t0 = time.time()
     if _host_only(request.headers.get("Host", "")) not in cfg.allowed_hosts:  # DNS-rebinding and host-header attacks
         return _err(400, "host not allowed")
+    if len(request.full_path) > cfg.max_url_chars:
+        return _err(414, "request target too long")
     client = _client_ip(cfg)
     if not limiter.allow(client, "all", cfg.rate_per_minute):
         resp = _err(429, "too many requests")
@@ -198,8 +209,32 @@ def _guard(cfg: SecurityConfig, limiter: RateLimiter) -> Response | None:
     return _post_checks(cfg, limiter, client) if request.method == "POST" else None
 
 
+_COMPRESSIBLE = ("application/json", "text/html", "text/css", "text/javascript", "text/csv")
+
+
+def _compress(resp: Response) -> None:
+    """gzip text responses over 1 KiB. Nothing secret or user-specific is ever in a body, so BREACH does not apply."""
+    if (
+        resp.status_code != 200
+        or resp.mimetype not in _COMPRESSIBLE
+        or "gzip" not in request.headers.get("Accept-Encoding", "")
+        or resp.headers.get("Content-Encoding")
+    ):
+        return
+    resp.direct_passthrough = False
+    body = resp.get_data()
+    resp.headers.add("Vary", "Accept-Encoding")
+    if len(body) < 1024:
+        return
+    resp.set_data(gzip.compress(body, compresslevel=6, mtime=0))
+    resp.headers["Content-Encoding"] = "gzip"
+    if resp.headers.get("ETag") and not resp.headers["ETag"].startswith("W/"):
+        resp.headers["ETag"] = "W/" + resp.headers["ETag"]
+
+
 def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
     path = request.path
+    _compress(resp)
     csp = PAGE_CSP if path in ("/", "/index.html") else BRIEF_CSP if path == "/brief" else JSON_CSP
     resp.headers["Content-Security-Policy"] = csp
     resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -208,15 +243,19 @@ def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     resp.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    resp.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    resp.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+    resp.headers["X-Request-ID"] = g.get("request_id", "-")
     resp.headers["Cache-Control"] = "no-store" if path.startswith("/api") or cfg.auth_user else "no-cache"
     resp.headers.pop("Server", None)
     if cfg.behind_https:
+        resp.headers["Content-Security-Policy"] += "; upgrade-insecure-requests"
         resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # log method, path, status, time, request id. Never the query values, body or feedback text (privacy).
     log.info(
         "%s %s %s %.0fms id=%s",
         request.method,
-        path,
+        _loggable(path),
         resp.status_code,
         (time.time() - g.get("t0", time.time())) * 1000,
         g.get("request_id", "-"),
@@ -225,7 +264,13 @@ def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
 
 
 def _register_errors(app: Flask) -> None:
-    messages = {400: "bad request", 404: "not found", 405: "method not allowed", 413: "request too large"}
+    messages = {
+        400: "bad request",
+        404: "not found",
+        405: "method not allowed",
+        413: "request too large",
+        414: "request target too long",
+    }
     for code, text in messages.items():
         app.register_error_handler(code, lambda _e, c=code, t=text: _err(c, t))
 

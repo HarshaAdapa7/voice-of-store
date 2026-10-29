@@ -13,6 +13,10 @@ async function api(path, opts) {
 }
 function fill(sel, items, label) { sel.replaceChildren(...items.map((x) => { const o = el("option", {value: x}, label ? label(x) : x); return o; })); }
 let META = null;
+function storeLabel(id) { const s = META.stores.find((x) => x.id === id); return s.name + " (" + s.region + ")"; }
+const GREETING = "Hello. Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule. Press the up arrow to repeat an earlier question.";
+const HISTORY = [];            // questions asked in this tab, for the up/down arrow recall
+let hpos = 0;
 
 function seriesSvg(s) {
   const w = 520, h = 90, n = s.weeks.length, bw = w / n;
@@ -30,10 +34,13 @@ function seriesSvg(s) {
   return svg;
 }
 
+let briefSeq = 0;
 async function showBrief() {
+  const mine = ++briefSeq;
   const region = $("region").value, week = $("week").value;
   $("print").href = "/brief?region=" + encodeURIComponent(region) + "&week=" + encodeURIComponent(week);
   const d = await api("/api/brief?region=" + encodeURIComponent(region) + "&week=" + encodeURIComponent(week));
+  if (mine !== briefSeq) return;
   const box = $("brief");
   if (!d.entries.length) { box.replaceChildren(el("p", {}, "No actionable issues this week.")); return; }
   box.replaceChildren(...d.entries.map((e, i) => el("section", {class: "card sev-" + e.severity},
@@ -46,6 +53,7 @@ async function showBrief() {
 }
 
 async function showFlags() {
+  $("export").href = "/api/export?week=" + encodeURIComponent($("eweek").value);
   const d = await api("/api/flags?week=" + encodeURIComponent($("eweek").value));
   const box = $("flags");
   if (!d.flags.length) { box.replaceChildren(el("p", {}, "No emerging-issue flags this week.")); return; }
@@ -92,8 +100,11 @@ function weekBars(weeks, values, flagged) {
   return svg;
 }
 
+let storeSeq = 0;
 async function showStore() {
+  const mine = ++storeSeq;                      // latest request wins: a slow earlier response must not overwrite a newer one
   const o = await api("/api/store?store_id=" + encodeURIComponent($("store").value) + "&week=" + encodeURIComponent($("sweek").value));
+  if (mine !== storeSeq) return;
   const flagged = o.flag_history.map((f) => f.week);
   const cards = o.top.map((t) => el("section", {class: "card sev-" + t.severity},
     el("h2", {}, t.issue, el("span", {class: "trend"}, t.trend)),
@@ -116,38 +127,66 @@ function say(role, text, items) {
 }
 
 async function ask(message) {
+  HISTORY.push(message); hpos = HISTORY.length;
   say("me", message);
+  const wait = say("bot", "…"); wait.setAttribute("aria-busy", "true");
   try {
     const r = await api("/api/assistant", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message})});
+    wait.remove();
     const box = say("bot", r.reply, r.items);
     if (r.source) box.append(el("div", {class: "meta"}, "Source: " + r.source + (r.week ? ", week of " + r.week : "")));
-  } catch (e) { say("bot", "That did not work (" + e.message + "). Please try again in a moment."); }
+  } catch (e) { wait.remove(); say("bot", "That did not work (" + e.message + "). Please try again in a moment."); }
 }
 
 function setupAsk(suggestions) {
   $("chips").replaceChildren(...suggestions.map((s) => { const b = el("button", {type: "button", class: "chip"}, s); b.addEventListener("click", () => ask(s)); return b; }));
   $("askform").addEventListener("submit", (ev) => { ev.preventDefault(); const q = $("question").value.trim(); if (q) { $("question").value = ""; ask(q); } });
-  say("bot", "Hello. Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule.");
+  $("clearchat").addEventListener("click", () => { $("chat").replaceChildren(); say("bot", GREETING); $("question").focus(); });
+  $("question").addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+    ev.preventDefault();
+    hpos = Math.min(HISTORY.length, Math.max(0, hpos + (ev.key === "ArrowUp" ? -1 : 1)));
+    $("question").value = HISTORY[hpos] || "";
+  });
+  say("bot", GREETING);
 }
 
 async function init() {
   META = await api("/api/meta");
   fill($("region"), META.regions); fill($("week"), META.test_weeks); fill($("eweek"), META.test_weeks);
-  fill($("store"), META.stores.map((s) => s.id), (id) => META.stores.find((s) => s.id === id).name + " (" + META.stores.find((s) => s.id === id).region + ")");
+  fill($("store"), META.stores.map((s) => s.id), storeLabel);
   fill($("sweek"), META.weeks); $("sweek").value = META.weeks[META.weeks.length - 1];
+  $("storefilter").addEventListener("input", () => {
+    const q = $("storefilter").value.trim().toLowerCase();
+    const hit = META.stores.filter((s) => !q || (s.name + " " + s.region).toLowerCase().includes(q));
+    fill($("store"), hit.map((s) => s.id), storeLabel);
+    if (hit.length) showStore().catch(showErr);
+  });
   $("store").addEventListener("change", () => showStore().catch(showErr)); $("sweek").addEventListener("change", () => showStore().catch(showErr));
   setupAsk(["What are the top issues in the South region this week?", "Any emerging issues this week?", "How is Kothrud doing?", "Who handles refrigeration problems?", "What is the escalation rule?", "How accurate is this?"]);
   fill($("channel"), META.channels); $("week").value = META.test_weeks[META.test_weeks.length - 1]; $("eweek").value = $("week").value;
   $("rule").textContent = META.escalation_rule;
   $("region").addEventListener("change", showBrief); $("week").addEventListener("change", showBrief); $("eweek").addEventListener("change", showFlags);
-  document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach((x) => x.setAttribute("aria-selected", x === b ? "true" : "false"));
+  const tabs = [...document.querySelectorAll("nav button")];
+  const select = (b) => {
+    tabs.forEach((x) => { x.setAttribute("aria-selected", x === b ? "true" : "false"); x.tabIndex = x === b ? 0 : -1; });
     for (const v of ["brief", "emerging", "stores", "ask", "try", "precision"]) $("view-" + v).hidden = v !== b.dataset.view;
     if (b.dataset.view === "emerging") showFlags().catch(showErr);
     if (b.dataset.view === "precision") showPrecision().catch(showErr);
     if (b.dataset.view === "stores") showStore().catch(showErr);
     if (b.dataset.view === "ask") $("question").focus();
-  }));
+  };
+  tabs.forEach((b, i) => {
+    b.addEventListener("click", () => select(b));
+    b.addEventListener("keydown", (ev) => {           // arrow keys move between tabs (WAI-ARIA tabs pattern)
+      const step = {ArrowRight: 1, ArrowLeft: -1}[ev.key];
+      if (ev.key === "Home" || ev.key === "End" || step) {
+        ev.preventDefault();
+        const j = ev.key === "Home" ? 0 : ev.key === "End" ? tabs.length - 1 : (i + step + tabs.length) % tabs.length;
+        tabs[j].focus(); select(tabs[j]);
+      }
+    });
+  });
   $("tryform").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try {

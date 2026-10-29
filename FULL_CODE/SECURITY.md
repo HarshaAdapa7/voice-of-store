@@ -56,4 +56,20 @@ Open an issue on the team repository or contact the team lead. Do not post explo
 - Body must be exactly `{"message": "<string>"}` (1-300 characters, no extra fields); same JSON-only, Origin, Sec-Fetch-Site, rate-limit (own bucket) and login checks as the classify endpoint.
 - Replies are built from fixed templates and data values, never from the question text; the UI renders them with `textContent`. Questions are not logged.
 - `GET /api/store` uses the same allow-lists as the other query endpoints (store id and week must be in the start-up lists).
-- Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (25 checks, run against this build: all passed).
+- Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (30 checks, run against this build: all passed).
+
+## Hardening round 2 (what was added and why)
+| Gap closed | Control | Test |
+|---|---|---|
+| DOM XSS through script sinks | CSP `require-trusted-types-for 'script'` (the UI has no sink anyway; this makes a future one fail closed) | `test_extra_security_headers_and_trusted_types` |
+| Log forging via the request path | Control characters replaced and length bounded before a path is logged | `test_log_forging_through_the_path_is_neutralised` |
+| Parameter pollution and probing | Every route accepts exactly its own query keys, each once; URLs over 512 characters get 414 | `test_unknown_or_repeated_query_parameters_are_refused`, `test_overlong_urls_are_refused` |
+| Spreadsheet formula injection in the CSV export | Cells starting with `= + - @` tab or CR get a leading apostrophe; the week in the file name is allow-listed (no header injection) | `test_csv_export_neutralises_formulas_and_downloads`, `test_csv_export_uses_allow_list` |
+| Cross-origin leaks and legacy plugins | `Cross-Origin-Embedder-Policy`, `X-Permitted-Cross-Domain-Policies: none`; `upgrade-insecure-requests` behind HTTPS | `test_extra_security_headers_and_trusted_types`, `test_https_mode_adds_upgrade_insecure_requests` |
+| Support traceability | `X-Request-ID` on every response, matching the log line | same |
+| Unknown unknowns | A seeded fuzz test sends 1,200 hostile requests to four endpoints and asserts no 500, no traceback, no reflection; malformed JSON bodies get 400 | `test_fuzzed_requests_never_crash_or_reflect` |
+
+**What "secure" means here, stated honestly.** No system can be proved 100 percent secure; this one removes every issue found by
+review, tests, a fuzzer and a live attack script, and keeps the attack surface small (no database, uploads, cookies, outbound
+calls, LLM or pickle). Still open: no independent penetration test, `pip-audit` not run (needs internet), one shared login, TLS must be
+supplied by a reverse proxy, and per-process rate limits (one worker).

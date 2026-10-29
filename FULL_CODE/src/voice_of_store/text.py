@@ -40,3 +40,9 @@ def clean_input(text: str, max_len: int) -> str:
     """Strip control characters, collapse whitespace and cap the length (for text typed into the web app)."""
     t = _CTRL.sub(" ", str(text))
     return _WS.sub(" ", t).strip()[:max_len]
+
+
+def csv_safe(value: object) -> str:
+    """Neutralise spreadsheet formula injection: a cell starting with = + - @ tab or CR is prefixed with an apostrophe."""
+    text = str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text

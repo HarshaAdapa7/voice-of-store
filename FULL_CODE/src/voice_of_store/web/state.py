@@ -17,6 +17,8 @@ from ..report import time_split_validation, wilson
 from ..stores import StoreResolver
 from ..text import clean_input, redact
 
+MAX_MEMOS = 4096
+
 
 class AppState:
     def __init__(self, data_dir: Path, submission_dir: Path):
@@ -40,6 +42,7 @@ class AppState:
         self._lock = threading.Lock()
         self._index_rows()
         self._brief_cache: dict = {}
+        self._memos: dict = {}
         self._validation: dict | None = None
         self._submission_dir = Path(submission_dir)
 
@@ -54,6 +57,19 @@ class AppState:
         self._region_week_rows = r[region.notna()].groupby([region[region.notna()], r["week"]]).size()
         act = r[(r["actionable"] == 1) & ~r["itype"].isin(C.NON_ISSUE) & r["store"].notna()]
         self._store_week_actionable = act.groupby(["store", "week"]).size()
+
+    def _memo(self, kind: str, key: tuple, build):
+        """Bounded read-through cache for results that depend only on allow-listed arguments (read-only data)."""
+        k = (kind, *key)
+        with self._lock:
+            if k in self._memos:
+                return self._memos[k]
+        value = build()
+        with self._lock:
+            if len(self._memos) >= MAX_MEMOS:
+                self._memos.clear()
+            self._memos[k] = value
+        return value
 
     def warm(self) -> None:
         """Compute every brief of the test weeks in the background so the first click is instant."""
@@ -89,6 +105,9 @@ class AppState:
         return int(self._region_week_rows.get((region, week), 0))
 
     def flags_for(self, week: str) -> list[dict]:
+        return self._memo("flags", (week,), lambda: self._flags_for(week))
+
+    def _flags_for(self, week: str) -> list[dict]:
         out = []
         by_id = self._by_id
         for f in self.flags[self.flags["as_of_week_start"] == week].itertuples():
@@ -143,6 +162,9 @@ class AppState:
         ]
 
     def store_overview(self, store_id: str, week: str) -> dict:
+        return self._memo("store", (store_id, week), lambda: self._store_overview(store_id, week))
+
+    def _store_overview(self, store_id: str, week: str) -> dict:
         """Everything the store page and the assistant show for one store and week."""
         prev = str((pd.Timestamp(week) - pd.Timedelta(days=7)).date())
         r = self.rows

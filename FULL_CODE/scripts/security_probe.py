@@ -37,6 +37,11 @@ def main() -> int:
     check("page has CSP without unsafe-inline", "'unsafe-inline'" not in h.get("Content-Security-Policy", "") and s == 200)
     check("security headers present", all(k in h for k in ("X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy")))
     check("no server version header", "Server" not in h or "Werkzeug" not in h.get("Server", ""))
+    check("trusted types enforced", "require-trusted-types-for" in h.get("Content-Security-Policy", ""))
+    check("cross-origin isolation headers", h.get("Cross-Origin-Embedder-Policy") == "require-corp" and "X-Request-ID" in h)
+    check("over-long URL refused", call("GET", "/api/health?a=" + "b" * 700)[0] == 414)
+    check("unknown query parameter refused", call("GET", "/api/meta?debug=1")[0] == 400)
+    check("export week is allow-listed", call("GET", "/api/export?week=x%0d%0aSet-Cookie:a=1")[0] == 400)
     check("bad Host refused", call("GET", "/api/health", headers={"Host": "evil.example"})[0] == 400)
     check(
         "cross-origin POST refused",

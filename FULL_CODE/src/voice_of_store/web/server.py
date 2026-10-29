@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 from pathlib import Path
 
@@ -10,6 +12,7 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
 from ..routing import ESCALATION_RULE
+from ..text import csv_safe
 from .security import SecurityConfig, install
 from .state import AppState
 
@@ -33,6 +36,13 @@ def _register_static(app: Flask) -> None:
         app.add_url_rule(path, endpoint="static_" + path.strip("/").replace(".", "_"), view_func=static_page, methods=["GET"])
 
 
+def _only(*names: str) -> None:
+    """The query string must hold exactly these keys, each once: no unknown or repeated parameters."""
+    keys = list(request.args.keys())
+    if set(keys) != set(names) or any(len(request.args.getlist(k)) != 1 for k in keys):
+        abort(400)
+
+
 def _arg(name: str, allowed: set, pattern: re.Pattern | None = None) -> str:
     """A query value that must be in the allow-list built at start-up (and match the pattern, when given)."""
     v = request.args.get(name, "")
@@ -51,37 +61,71 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
 
     @app.get("/api/health")
     def health():
+        _only()
         return jsonify(status="ok")
 
     @app.get("/api/meta")
     def get_meta():
+        _only()
         return jsonify(dict(meta, escalation_rule=ESCALATION_RULE))
 
     @app.get("/api/brief")
     def get_brief():
+        _only("region", "week")
         region, week = _arg("region", regions), _arg("week", weeks, _DATE)
         return jsonify(region=region, week=week, rows_used=state.week_rows(region, week), entries=state.brief(region, week))
 
     @app.get("/brief")
     def brief_page():
+        _only("region", "week")
         region, week = _arg("region", regions), _arg("week", weeks, _DATE)
         return Response(render_html(region, week, state.brief(region, week), state.week_rows(region, week)), mimetype="text/html")
 
     @app.get("/api/flags")
     def get_flags():
+        _only("week")
         week = _arg("week", weeks, _DATE)
         return jsonify(week=week, flags=state.flags_for(week))
 
     @app.get("/api/series")
     def get_series():
+        _only("store_id", "issue_type")
         return jsonify(state.series(_arg("store_id", stores, _ID), _arg("issue_type", types)))
+
+    @app.get("/api/export")
+    def export_flags():
+        _only("week")
+        week = _arg("week", weeks, _DATE)
+        buf = io.StringIO()
+        out = csv.writer(buf, lineterminator="\n")
+        out.writerow(
+            ["week_start", "store_id", "store", "region", "issue_type_id", "issue", "owner", "confidence", "evidence_count"]
+        )
+        for f in state.flags_for(week):
+            row = [
+                week,
+                f["store_id"],
+                f["store"],
+                f["region"],
+                f["issue_type"],
+                f["issue"],
+                f["owner"],
+                f["confidence"],
+                len(f["evidence"]),
+            ]
+            out.writerow([csv_safe(v) for v in row])
+        resp = Response(buf.getvalue(), mimetype="text/csv")
+        resp.headers["Content-Disposition"] = f'attachment; filename="r5_flags_{week}.csv"'  # week is allow-listed
+        return resp
 
     @app.get("/api/validation")
     def get_validation():
+        _only()
         return jsonify(state.validation())
 
     @app.get("/api/store")
     def get_store():
+        _only("store_id", "week")
         return jsonify(state.store_overview(_arg("store_id", stores, _ID), _arg("week", weeks, _DATE)))
 
     @app.post("/api/assistant")

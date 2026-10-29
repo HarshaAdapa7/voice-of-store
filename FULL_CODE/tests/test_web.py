@@ -158,8 +158,8 @@ def test_invalid_json_and_oversize_body(client):
 def test_query_parameters_use_allow_lists(client):
     bad = ["", "2026-08-03' OR '1'='1", "../../etc/passwd", "2026-8-3", "x" * 5000, "<script>", "2026-08-10"]
     for w in bad:
-        assert client.get("/api/brief", query_string={"region": REGION, "week": w}).status_code == 400, w
-        assert client.get("/api/flags", query_string={"week": w}).status_code == 400
+        assert client.get("/api/brief", query_string={"region": REGION, "week": w}).status_code in (400, 414), w
+        assert client.get("/api/flags", query_string={"week": w}).status_code in (400, 414)
     assert client.get("/api/brief", query_string={"region": "Mars", "week": WEEK}).status_code == 400
     assert client.get("/api/series", query_string={"store_id": "ST-ABCDE", "issue_type": "IT99"}).status_code == 400
     assert client.get("/api/series", query_string={"store_id": "ST-ABCDE", "issue_type": "IT10"}).status_code == 200
@@ -376,7 +376,7 @@ def test_assistant_and_store_need_login_when_configured():
 def test_store_endpoint_uses_allow_lists(client):
     assert client.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": WEEK}).status_code == 200
     for sid in ["", "ST-ZZZZZ", "../x", "ST-ABCDE' OR 1=1", "x" * 500]:
-        assert client.get("/api/store", query_string={"store_id": sid, "week": WEEK}).status_code == 400, sid
+        assert client.get("/api/store", query_string={"store_id": sid, "week": WEEK}).status_code in (400, 414), sid
     assert client.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": "2030-01-07"}).status_code == 400
 
 
@@ -455,3 +455,101 @@ def test_warm_up_fills_the_brief_cache(real):
     state, _ = real
     state.warm()
     assert len(state._brief_cache) == len(state.regions) * len(state.test_weeks)
+
+
+# ---------------- hardening round 2 ----------------
+class FlagStub(StubState):
+    def flags_for(self, week):
+        return [
+            dict(
+                store_id="ST-ABCDE",
+                store='=HYPERLINK("http://x")',
+                region=REGION,
+                issue_type="IT10",
+                issue="Refrigeration",
+                owner="Store Ops",
+                confidence=0.7,
+                evidence=[dict(channel="in_app", text="a"), dict(channel="in_app", text="b")],
+            )
+        ]
+
+
+def _flag_client():
+    return create_app(FlagStub(), SecurityConfig()).test_client()
+
+
+def test_csv_export_neutralises_formulas_and_downloads():
+    r = _flag_client().get("/api/export", query_string={"week": WEEK})
+    assert r.status_code == 200 and r.mimetype == "text/csv"
+    assert r.headers["Content-Disposition"] == f'attachment; filename="r5_flags_{WEEK}.csv"'
+    lines = r.get_data(as_text=True).splitlines()
+    assert lines[0].startswith("week_start,store_id") and "'=HYPERLINK" in lines[1] and ",2" in lines[1]
+    assert not any(cell.startswith("=") for cell in lines[1].split(","))
+
+
+def test_csv_export_uses_allow_list(client):
+    for bad in [{}, {"week": "2030-01-07"}, {"week": WEEK + "\r\nSet-Cookie: x=1"}, {"week": WEEK, "x": "1"}]:
+        assert client.get("/api/export", query_string=bad).status_code == 400, bad
+
+
+def test_unknown_or_repeated_query_parameters_are_refused(client):
+    assert client.get("/api/brief?region=South&week=" + WEEK + "&debug=1").status_code == 400
+    assert client.get("/api/brief?region=South&region=South&week=" + WEEK).status_code == 400
+    assert client.get("/api/meta?x=1").status_code == 400
+    assert client.get("/api/health?x=1").status_code == 400
+    assert client.get("/api/brief?region=South&week=" + WEEK).status_code == 200
+
+
+def test_overlong_urls_are_refused(client):
+    assert client.get("/api/health?" + "a=" + "b" * 600).status_code == 414
+
+
+def test_log_forging_through_the_path_is_neutralised(client, caplog):
+    with caplog.at_level(logging.INFO, logger="voice_of_store.web"):
+        client.get("/x%0d%0a2026-01-01 INFO forged line id=0")
+    text = " ".join(r.getMessage() for r in caplog.records)
+    assert "\n" not in text and "\r" not in text and "forged" in text  # present, but on the same line
+
+
+def test_extra_security_headers_and_trusted_types(client):
+    r = client.get("/")
+    csp = r.headers["Content-Security-Policy"]
+    assert "require-trusted-types-for 'script'" in csp and "'unsafe-inline'" not in csp and "'unsafe-eval'" not in csp
+    assert r.headers["Cross-Origin-Embedder-Policy"] == "require-corp"
+    assert r.headers["X-Permitted-Cross-Domain-Policies"] == "none" and len(r.headers["X-Request-ID"]) == 12
+
+
+def test_https_mode_adds_upgrade_insecure_requests():
+    c = make(behind_https=True)
+    assert "upgrade-insecure-requests" in c.get("/").headers["Content-Security-Policy"]
+
+
+def test_gzip_only_when_asked_and_only_for_large_text(client):
+    big = client.get("/app.js", headers={"Accept-Encoding": "gzip"})
+    assert big.headers.get("Content-Encoding") == "gzip" and "Accept-Encoding" in big.headers["Vary"]
+    import gzip
+
+    assert b"use strict" in gzip.decompress(big.data)
+    assert client.get("/app.js").headers.get("Content-Encoding") is None
+    assert client.get("/api/health", headers={"Accept-Encoding": "gzip"}).headers.get("Content-Encoding") is None
+
+
+def test_fuzzed_requests_never_crash_or_reflect():
+    import random
+
+    rng = random.Random(7)
+    c = make(rate_per_minute=10**6, assistant_per_minute=10**6, classify_per_minute=10**6)
+    alphabet = "abcXYZ<>\"'`{}$%&=;:/\\.-_ \t\n\x00\x7f‮\U0001f600é"
+    for _ in range(300):
+        junk = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 80)))
+        for r in (
+            c.post("/api/assistant", json={"message": junk or "x"}),
+            c.post("/api/classify", json={"text": junk or "x", "channel": "in_app"}),
+            c.get("/api/brief", query_string={"region": junk, "week": junk}),
+            c.get("/api/store", query_string={"store_id": junk, "week": junk}),
+        ):
+            assert r.status_code in (200, 400, 429), (r.status_code, junk)
+            body = r.get_data(as_text=True)
+            assert "Traceback" not in body and (not junk.strip() or "<" not in junk or junk not in body)
+    for raw in (b"", b"{", b"[]", b"null", b'{"message":' + b"[" * 500, b"\xff\xfe\x00"):
+        assert c.post("/api/assistant", data=raw, headers={"Content-Type": "application/json"}).status_code == 400
