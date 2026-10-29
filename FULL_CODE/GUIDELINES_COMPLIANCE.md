@@ -62,4 +62,4 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 - The Dockerfile was written and reviewed but not built.
 - Tested on Python 3.13 only; the stated minimum is 3.12 (the pinned libraries need it).
 - No independent security test; the controls are checked by this project's own tests and by `scripts/security_probe.py` against a running instance.
-- `mypy` is clean and 133 tests pass on Python 3.13 in the build sandbox.
+- `mypy` is clean and 148 tests pass (95.0% line coverage of src/) on Python 3.13 in the build sandbox.

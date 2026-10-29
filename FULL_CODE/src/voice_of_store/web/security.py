@@ -41,6 +41,8 @@ BRIEF_CSP = (
 
 @dataclass
 class SecurityConfig:
+    """Every web security setting in one place; defaults are the strict ones."""
+
     allowed_hosts: frozenset = frozenset({"127.0.0.1", "localhost", "[::1]"})
     max_body_bytes: int = 8 * 1024
     max_text_chars: int = 2000
@@ -59,6 +61,7 @@ class SecurityConfig:
 
     @classmethod
     def from_env(cls) -> SecurityConfig:
+        """Read the R5_* environment variables; refuses a half-configured login."""
         hosts = {h.strip().lower() for h in os.environ.get("R5_ALLOWED_HOSTS", "").split(",") if h.strip()}
         cfg = cls()
         if hosts:
@@ -82,6 +85,7 @@ class RateLimiter:
         self._max = max_clients
 
     def allow(self, client: str, bucket: str, limit: int, now: float | None = None) -> bool:
+        """True while the client is within its per-minute limit for the bucket."""
         now = time.time() if now is None else now
         window = int(now // 60)
         key = (client, bucket)

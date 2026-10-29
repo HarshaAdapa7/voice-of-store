@@ -35,6 +35,7 @@ def build_flags(data: Data, resolver: StoreResolver) -> pd.DataFrame:
 
 
 def write_submission(data_dir: Path, out_dir: Path) -> tuple[int, int]:
+    """Write R5_predictions.csv, R5_emerging_flags.csv and detector_cmd.txt into the output folder."""
     data = load_data(data_dir)
     resolver = StoreResolver(data.stores)
     pred = build_predictions(data, resolver)

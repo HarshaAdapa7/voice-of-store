@@ -25,6 +25,8 @@ class DataError(Exception):
 
 @dataclass
 class Data:
+    """The validated input tables."""
+
     feedback: pd.DataFrame
     labels: pd.DataFrame
     stores: pd.DataFrame
@@ -113,6 +115,7 @@ def validate_predictions(pred: pd.DataFrame, feedback_ids: pd.Series) -> list[st
 
 
 def validate_flags(flags: pd.DataFrame) -> list[str]:
+    """Check a flags frame against the file contract before it is written."""
     errs: list[str] = []
     if list(flags.columns) != FLAG_COLS:
         errs.append(f"columns must be {FLAG_COLS}, got {list(flags.columns)}")

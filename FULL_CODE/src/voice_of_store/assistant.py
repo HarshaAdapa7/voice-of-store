@@ -50,13 +50,26 @@ class Context(Protocol):
     regions: list[str]
     weeks: list[str]
 
-    def brief(self, region: str, week: str) -> list[dict]: ...
-    def flags_for(self, week: str) -> list[dict]: ...
-    def store_overview(self, store_id: str, week: str) -> dict: ...
-    def store_ids_in_text(self, text: str) -> list[str]: ...
-    def issue_catalogue(self) -> list[dict]: ...
-    def validation(self) -> dict: ...
-    def classify(self, text: str, channel: str) -> dict: ...
+    def brief(self, region: str, week: str) -> list[dict]:
+        """Top issues for a region and week."""
+
+    def flags_for(self, week: str) -> list[dict]:
+        """Emerging-issue flags for a week."""
+
+    def store_overview(self, store_id: str, week: str) -> dict:
+        """Status of one store for a week."""
+
+    def store_ids_in_text(self, text: str) -> list[str]:
+        """Store ids whose locality the text names."""
+
+    def issue_catalogue(self) -> list[dict]:
+        """Issue types with owner, policy floor and description."""
+
+    def validation(self) -> dict:
+        """The time-split precision statement."""
+
+    def classify(self, text: str, channel: str) -> dict:
+        """Classify one comment."""
 
 
 def _reply(intent: str, text: str, items: list[dict] | None = None, week: str | None = None, source: str = "") -> dict:
@@ -64,6 +77,8 @@ def _reply(intent: str, text: str, items: list[dict] | None = None, week: str | 
 
 
 class Assistant:
+    """Rule-based store assistant: intent rules over the same data the dashboard shows, no model and no network."""
+
     def __init__(self, ctx: Context):
         self.ctx = ctx
 
@@ -104,6 +119,7 @@ class Assistant:
 
     # ---- answering ----------------------------------------------------------------------------------------------------
     def ask(self, message: str) -> dict:
+        """Answer one question; always returns intent, reply, items, week, source and suggestions, never raises on odd input."""
         q = clean_input(message, MAX_QUESTION_CHARS).lower()
         if not q:
             return _reply("help", "Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule.")

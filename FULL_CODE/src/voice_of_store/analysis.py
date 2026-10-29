@@ -191,6 +191,7 @@ def weekly_overview(data: Data, rows: pd.DataFrame, flags: pd.DataFrame) -> list
 
 
 def data_quality(data: Data, rows: pd.DataFrame) -> dict:
+    """Record counts, channel mix, how many records name a store, label coverage and the safety-no-store count."""
     fb = data.feedback
     wk = week_start_of(fb["created_at"])
     return dict(
@@ -209,6 +210,7 @@ def data_quality(data: Data, rows: pd.DataFrame) -> dict:
 def build_report(
     data: Data, resolver: StoreResolver, rows: pd.DataFrame, flags: pd.DataFrame, validation: dict, incidents: pd.DataFrame | None
 ) -> dict:
+    """Assemble every section of the evaluation report from one time-split run and the full replay."""
     te, p = split_predictions(data, resolver)
     return dict(
         validation=validation,

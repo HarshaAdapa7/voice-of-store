@@ -5,14 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.pipeline import make_union
+from sklearn.pipeline import FeatureUnion, make_union
 from sklearn.svm import LinearSVC
 
 from . import config as C
 from .text import model_input
 
 
-def _vectoriser():
+def _vectoriser() -> FeatureUnion:
     return make_union(
         TfidfVectorizer(analyzer="char_wb", ngram_range=C.CHAR_NGRAM, min_df=C.MIN_DF, sublinear_tf=True),
         TfidfVectorizer(ngram_range=C.WORD_NGRAM, min_df=C.MIN_DF, sublinear_tf=True),
@@ -36,6 +36,8 @@ class NotEnoughLabels(ValueError):
 
 
 class FeedbackClassifier:
+    """Three linear SVM heads (issue type, severity, actionable) over character and word TF-IDF; trained at run time and kept in memory only."""
+
     def __init__(self, taxonomy: pd.DataFrame):
         self.floor = taxonomy["policy_severity_floor"].to_dict()
         self.vec = _vectoriser()
@@ -44,6 +46,7 @@ class FeedbackClassifier:
         self.act = _svm(C.C_ACTIONABLE)
 
     def fit(self, feedback: pd.DataFrame, labels: pd.DataFrame) -> FeedbackClassifier:
+        """Train on labelled rows only; raises NotEnoughLabels when there are too few."""
         m = labels.merge(feedback[["feedback_id", "channel", "text"]], on="feedback_id", how="inner")
         if len(m) < C.MIN_TRAIN_ROWS:
             raise NotEnoughLabels(f"{len(m)} labelled rows are available, at least {C.MIN_TRAIN_ROWS} are needed to train")
@@ -54,12 +57,24 @@ class FeedbackClassifier:
         return self
 
     def proba(self, feedback: pd.DataFrame) -> pd.DataFrame:
+        """Softmax of the issue margins: a ranking score, not a calibrated probability."""
         x = self.vec.transform(model_input(feedback))
         return pd.DataFrame(margin_confidence(self.issue.decision_function(x)), columns=self.issue.classes_, index=feedback.index)
 
     def predict(self, feedback: pd.DataFrame, resolved_store: pd.Series) -> pd.DataFrame:
         """Return feedback_id, issue_type_id, severity, actionable and the type confidence."""
+        return self._predict_features(self.vec.transform(model_input(feedback)), feedback, resolved_store)
+
+    def analyse(self, feedback: pd.DataFrame, resolved_store: pd.Series, top: int = 6):
+        """Prediction, the three best issue scores and the key terms for one comment, from a single vectorisation."""
         x = self.vec.transform(model_input(feedback))
+        pred = self._predict_features(x, feedback, resolved_store)
+        scores = pd.DataFrame(
+            margin_confidence(self.issue.decision_function(x)), columns=self.issue.classes_, index=feedback.index
+        )
+        return pred, scores.iloc[0].sort_values(ascending=False).head(3), self._terms(x, top)
+
+    def _predict_features(self, x, feedback: pd.DataFrame, resolved_store: pd.Series) -> pd.DataFrame:
         p_issue = margin_confidence(self.issue.decision_function(x))
         itype = pd.Series(self.issue.classes_[p_issue.argmax(axis=1)], index=feedback.index)
         conf = pd.Series(p_issue.max(axis=1), index=feedback.index)
@@ -83,7 +98,9 @@ class FeedbackClassifier:
 
     def explain(self, feedback: pd.DataFrame, top: int = 6) -> list[tuple[str, float]]:
         """Word-level terms that pushed one row toward its predicted type (largest positive contributions)."""
-        x = self.vec.transform(model_input(feedback.iloc[[0]]))
+        return self._terms(self.vec.transform(model_input(feedback.iloc[[0]])), top)
+
+    def _terms(self, x, top: int) -> list[tuple[str, float]]:
         idx = int(self.issue.decision_function(x).argmax())
         coef = self.issue.coef_[idx]
         (_, char_v), (_, word_v) = self.vec.transformer_list

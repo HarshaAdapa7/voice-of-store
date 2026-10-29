@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -24,6 +25,8 @@ MAX_MEMOS = 4096
 
 
 class AppState:
+    """Data, classifier and predicted rows loaded once at start-up and read-only afterwards."""
+
     def __init__(self, data_dir: Path, submission_dir: Path):
         self.data: Data = load_data(Path(data_dir))
         self.resolver = StoreResolver(self.data.stores)
@@ -63,7 +66,7 @@ class AppState:
         act = r[(r["actionable"] == 1) & ~r["itype"].isin(C.NON_ISSUE) & r["store"].notna()]
         self._store_week_actionable = act.groupby(["store", "week"]).size()
 
-    def _memo(self, kind: str, key: tuple, build):
+    def _memo(self, kind: str, key: tuple, build) -> Any:
         """Bounded read-through cache for results that depend only on allow-listed arguments (read-only data)."""
         k = (kind, *key)
         with self._lock:
@@ -85,6 +88,7 @@ class AppState:
 
     # ---- queries (all arguments are validated by the caller against these allow-lists) ----
     def meta(self) -> dict:
+        """Allow-lists and labels the UI needs."""
         return dict(
             regions=self.regions,
             weeks=self.weeks,
@@ -98,6 +102,7 @@ class AppState:
         )
 
     def brief(self, region: str, week: str) -> list[dict]:
+        """Cached top issues for a region and week."""
         key = (region, week)
         with self._lock:
             if key not in self._brief_cache:
@@ -108,9 +113,11 @@ class AppState:
             return self._brief_cache[key]
 
     def week_rows(self, region: str, week: str) -> int:
+        """Number of records for a region and week."""
         return int(self._region_week_rows.get((region, week), 0))
 
     def flags_for(self, week: str) -> list[dict]:
+        """Cached flags for a week with evidence, status, next step and what changed."""
         return self._memo("flags", (week,), lambda: self._flags_for(week))
 
     def _flags_for(self, week: str) -> list[dict]:
@@ -185,6 +192,7 @@ class AppState:
         )
 
     def series(self, store_id: str, issue_type: str) -> dict:
+        """Weekly counts for one store and issue type next to the chain total."""
         counts = self._counts.get((store_id, issue_type), pd.Series(dtype=int))
         chain = self._chain.get(issue_type, pd.Series(dtype=int))
         flagged = self.flags[(self.flags["store_id"] == store_id) & (self.flags["issue_type_id"] == issue_type)][
@@ -202,6 +210,7 @@ class AppState:
         return self.resolver.names_in_text(text)
 
     def issue_catalogue(self) -> list[dict]:
+        """Actionable issue types with owner and description."""
         return [
             dict(
                 id=r.issue_type_id,
@@ -215,6 +224,7 @@ class AppState:
         ]
 
     def store_overview(self, store_id: str, week: str) -> dict:
+        """Cached status of one store for a week."""
         return self._memo("store", (store_id, week), lambda: self._store_overview(store_id, week))
 
     def _store_overview(self, store_id: str, week: str) -> dict:
@@ -263,13 +273,13 @@ class AppState:
         )
 
     def classify(self, text: str, channel: str) -> dict:
+        """Classify one comment with the live model and explain it with key terms."""
         text = clean_input(text, 2000)
         df = pd.DataFrame([dict(feedback_id="input", channel=channel, text=text, store_id=None)])
         store = self.resolver.resolve(None, text)
-        pred = self.clf.predict(df, pd.Series([store], index=df.index, dtype=object)).iloc[0]
-        proba = self.clf.proba(df).iloc[0].sort_values(ascending=False).head(3)
+        pred_frame, proba, why = self.clf.analyse(df, pd.Series([store], index=df.index, dtype=object))
+        pred = pred_frame.iloc[0]
         itype = str(pred["issue_type_id"])
-        why = self.clf.explain(df)
         return dict(
             issue_type=itype,
             issue=str(self.data.taxonomy.loc[itype, "issue_type"]),
@@ -288,6 +298,7 @@ class AppState:
         )
 
     def validation(self) -> dict:
+        """The precision statement, read from out/validation.json or computed once."""
         path = self._submission_dir.parent / "out" / "validation.json"
         with self._lock:
             if self._validation is None:
@@ -318,4 +329,5 @@ class AppState:
         return self._report
 
     def report_html(self) -> str:
+        """The evaluation report page."""
         return render_report(self.report())

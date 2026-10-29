@@ -113,6 +113,27 @@ FULL_CODE/
 Data flow: read folder → resolve stores → train on public labels dated before the cutoff → predict rows → weekly counts →
 statistic → flags with evidence → briefs.
 
+## Performance (measured, `python FULL_CODE/scripts/benchmark.py`)
+
+| Measure | Result |
+|---|---|
+| Jury detector, one week, 39,769 rows, no internet | about 20 s (limit 600 s) |
+| Whole submission (26 weeks, classifier retrained as of each week) | about 3 minutes |
+| Web start-up (load, train, classify every row) | about 19 s; briefs and report pre-computed in the background about 27 s later |
+| Request latency, in process | brief, flags, store, report: under 1 ms median; assistant 1.6 ms; classify a comment about 30 ms |
+| Responses | gzip for text over 1 KiB, bounded caches, constant-time lookups from indexes built at start-up |
+
+## Quality evidence
+
+| Measure | Result |
+|---|---|
+| Tests | 148 tests in 7 files (`cd FULL_CODE && python -m pytest -q`); acceptance tests are named after the requirements (`tests/test_requirements.py`) |
+| Line coverage of `src/` | 95.0% overall (`python FULL_CODE/scripts/line_coverage.py`, standard library only) |
+| Static checks | `ruff` (E, F, W, I, B, UP, S) and `mypy` clean |
+| Rubric self-audit | `python FULL_CODE/scripts/self_audit.py --full` scores the repository against the pack rules, the requirement list and the guidelines (our own rubric, not the jury's) |
+| One-page briefs | `python FULL_CODE/scripts/check_brief_pages.py`: all 65 briefs print on one A4 page |
+| Traceability | `FULL_CODE/REQUIREMENTS_TRACEABILITY.md` maps every requirement to code and a test |
+
 ## Reports (what each output is for)
 
 | Output | Where | Purpose |
@@ -158,6 +179,7 @@ container, `ruff` with the bandit rules. Full table, configuration and the hones
 | Time-split validation (train weeks 1-9, test labelled rows of weeks 10-13) | classification 0.914: issue macro-F1 0.899, severity weighted-F1 0.913, actionable F1 0.944 | Out of sample and forward in time; the best local proxy |
 | Model choice (issue macro-F1, mean of three forward-in-time splits) | logistic regression 0.849, linear SVM 0.881, linear SVM with min_df=1 0.893 (chosen) | Same features and labels; the SVM won on every split. Its confidence is a softmax of margins: a ranking score, not a calibrated probability |
 | Organisers' baseline (keyword rules, from the pack README) | classification about 0.58, lead 0.33 on the training truth | Our worked-example lead is 0.50 and our time-split classification 0.914; different protocols, so read as direction, not a like-for-like gap |
+| Safety-boost experiment (three forward splits) | Adding a margin bonus to the safety types raised safety recall from 90.0% to 92.1% (bonus 0.1) or 96.0% (0.2), but issue macro-F1 fell from 0.897 to 0.890 and 0.879, and safety precision fell from 92.6% to 83.9% and 74.8% | Not adopted: the score weights macro-F1 and the extra alarms would be mostly false. A low-confidence "safety watch" list was also tried: at a margin of 0.3 it finds 6 of the 8 missed reports but is only 20% precise and lists about 5% of all records. Left as a documented limitation |
 | Safety-type recall (time-split, 84 truly safety-type actionable records) | 74 caught (88.1%, 95% interval 79.5% to 93.4%) | The main known weakness; 6 were predicted as a non-safety type and 4 as not actionable. Listed in `out/report.html` |
 | Precision statement (time-split) | Marked actionable: 95.2% truly (95% interval 93.1%-96.7%); marked actionable and high/critical: 97.0% (92.6%-98.8%) | Sample over-represents rare types; not the full-stream rate |
 | Worked example (IT17, ST-D69EG) | first valid flag 2026-05-11, naive detector 2026-05-18: lead +1 week | One incident only; none of the three hidden ones are known |

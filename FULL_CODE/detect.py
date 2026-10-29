@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Detector entry point (the command in submission/detector_cmd.txt).
 
-    python FULL_CODE/detect.py --feedback <feedback.csv> --as-of YYYY-MM-DD --out <flags.csv>
-
-Writes the flags for the Monday-Sunday week containing --as-of. Uses only rows created before the next Monday 00:00,
-reads every data file from the folder that contains --feedback, trains the classifier at run time from the public
-labels in that folder, needs no internet and no pre-built model file.
+Called by the jury as the command stored in submission/detector_cmd.txt. It reports the Monday-to-Sunday week that holds
+the given date, and only looks at feedback created before the following Monday 00:00. --feedback may be the CSV itself or
+the folder holding it; every other data file is read from that same folder. The classifier is trained on the spot from
+the public labels there, so no internet and no saved model file are needed.
 """
 
 from __future__ import annotations
@@ -26,16 +25,27 @@ from voice_of_store.stores import StoreResolver  # noqa: E402
 log = logging.getLogger("detect")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Voice-of-Store emerging-issue detector (one week, as-of)")
+def build_parser() -> argparse.ArgumentParser:
+    """The three options the jury's command line supplies."""
+    ap = argparse.ArgumentParser(description="Voice-of-Store emerging-issue detector for a single week")
     ap.add_argument(
         "--feedback",
         required=True,
         help="path to feedback.csv, or to the folder that holds it; other data files are read from that folder",
     )
-    ap.add_argument("--as-of", dest="as_of", required=True, help="YYYY-MM-DD, any day of the week to flag")
-    ap.add_argument("--out", required=True, help="flags file to write")
-    a = ap.parse_args()
+    ap.add_argument(
+        "--as-of",
+        dest="as_of",
+        required=True,
+        help="a date (YYYY-MM-DD) inside the week to report; the Monday-to-Sunday week that contains it is used",
+    )
+    ap.add_argument("--out", required=True, help="where to write the flags CSV")
+    return ap
+
+
+def main() -> None:
+    """Parse the command line, run the detector for the requested week and write the flags file."""
+    a = build_parser().parse_args()
     setup_logging()
     try:
         fb_path = Path(a.feedback).resolve()

@@ -44,6 +44,7 @@ def write_briefs(data: Data, rows: pd.DataFrame, flags: pd.DataFrame, out: Path,
 
 
 def validation_text(v: dict) -> str:
+    """The validation and precision statement as Markdown."""
     lo1, hi1 = v["ci_actionable"]
     lo2, hi2 = v["ci_actionable_high"]
     return (
@@ -60,6 +61,7 @@ def validation_text(v: dict) -> str:
 
 
 def write_validation(data: Data, resolver: StoreResolver, out: Path) -> dict:
+    """Run the time-split validation and write validation.json and validation.md."""
     v = time_split_validation(data, resolver)
     v["ci_actionable"] = list(wilson(round(v["precision_actionable"] * v["n_pred_actionable"]), v["n_pred_actionable"]))
     v["ci_actionable_high"] = list(
@@ -82,6 +84,7 @@ def write_report(
 
 
 def run(data_dir: Path, submission_dir: Path, out_dir: Path, from_week_index: int) -> int:
+    """Write every brief, the validation files and the evaluation report; returns the number of briefs."""
     data = load_data(data_dir)
     resolver = StoreResolver(data.stores)
     flags = pd.read_csv(submission_dir / "R5_emerging_flags.csv", dtype=str)

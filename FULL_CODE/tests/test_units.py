@@ -125,3 +125,51 @@ def test_status_never_presents_a_report_as_established_fact():
                 "unverified" in text or "not a verified" in text or "to be verified" in text
             ) and "confirmed incident" not in text
     assert "allegation" in verification_status("IT04", "UNVERIFIED")
+
+
+def test_brief_html_keeps_every_required_element_and_is_compact():
+    from voice_of_store.brief import QUOTE_CHARS, render_html
+
+    entry = dict(
+        issue="Refrigeration / cold-chain failure",
+        owner="Store Ops",
+        severity="high",
+        tier="CORROBORATED",
+        window="same day",
+        count=5,
+        channels=2,
+        n_stores=1,
+        stores=[("Saffron Market X", 5)],
+        trend="↑",
+        prev_count=1,
+        emerging=["Saffron Market X"],
+        quotes=[("in_app", "x" * 400, "Mon 03 Aug 09:00"), ("call_centre_ticket", "freezer down", "Tue 04 Aug 10:00")],
+        dedup=dict(reports=5, incidents=2, cross_channel=1),
+        status="Corroborated report: still not a verified incident.",
+        next_step="Read the temperature log today.",
+        safety=True,
+        confidence=0.8,
+        first_seen="Mon 03 Aug 09:00",
+        last_seen="Tue 04 Aug 10:00",
+        by_channel=[("in_app", 3), ("call_centre_ticket", 2)],
+        rates={"Saffron Market X": 4.2},
+        beyond_top5=False,
+    )
+    extra = dict(entry, issue="Allergen / ingredient labelling error", beyond_top5=True)
+    page = render_html("South", "2026-08-03", [entry, extra], 123)
+    for needle in (
+        "Store Ops",
+        "severity",
+        "CORROBORATED",
+        "same day",
+        "↑",
+        "Saffron Market X 5 (4.2/10k)",
+        "in_app 3",
+        "Next step",
+        "Escalation rule",
+        "Also escalated",
+        "not a verified incident",
+        "@page",
+    ):
+        assert needle in page, needle
+    assert "x" * (QUOTE_CHARS + 5) not in page and "<script" not in page

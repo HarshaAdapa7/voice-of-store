@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from voice_of_store import config as C
 from voice_of_store.evidence import belongs
@@ -184,3 +185,34 @@ def test_detector_accepts_a_folder_or_the_file(tmp_path):
         )
         outs.append(out.read_bytes())
     assert outs[0] == outs[1]
+
+
+def test_briefing_run_writes_pages_report_and_validation(tmp_path):
+    """In-process run of the briefs step on the last two weeks (the full 13-week run is exercised by main.py)."""
+    from voice_of_store.briefing import run
+
+    root = Path(__file__).resolve().parents[2]
+    if not (root / "data" / "feedback.csv").exists():
+        pytest.skip("pack data not present")
+    n = run(root / "data", root / "submission", tmp_path, from_week_index=25)
+    assert n == 10  # 2 weeks x 5 regions
+    pages = sorted((tmp_path / "briefs").glob("*/*.html"))
+    assert len(pages) == 10 and all("Escalation rule" in p.read_text() for p in pages)
+    assert (tmp_path / "report.html").exists() and (tmp_path / "validation.md").exists()
+    assert "Precision statement" in (tmp_path / "validation.md").read_text()
+
+
+def test_submission_pieces_are_valid_and_the_command_file_is_exact(tmp_path):
+    from voice_of_store.io import load_data, validate_flags, validate_predictions
+    from voice_of_store.stores import StoreResolver
+    from voice_of_store.submission import DETECTOR_CMD, build_predictions
+
+    root = Path(__file__).resolve().parents[2]
+    if not (root / "data" / "feedback.csv").exists():
+        pytest.skip("pack data not present")
+    data = load_data(root / "data")
+    pred = build_predictions(data, StoreResolver(data.stores))
+    assert validate_predictions(pred, data.feedback["feedback_id"]) == []
+    flags = pd.read_csv(root / "submission" / "R5_emerging_flags.csv")
+    assert validate_flags(flags) == []
+    assert DETECTOR_CMD == (root / "submission" / "detector_cmd.txt").read_text()

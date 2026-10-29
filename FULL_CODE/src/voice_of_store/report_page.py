@@ -155,6 +155,7 @@ def _weeks(w: list[dict]) -> str:
 
 
 def render_report(rep: dict) -> str:
+    """Render the report dict as one script-free HTML page; every value is escaped."""
     esc = html.escape
     v, e, q, dd = rep["validation"], rep["escalation"], rep["quality"], rep["dedup"]
     top = e["by_confidence"][0]

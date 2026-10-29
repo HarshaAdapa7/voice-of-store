@@ -39,7 +39,7 @@ def naive_week(chain: np.ndarray, onset: int) -> int | None:
     return None
 
 
-def run(counts, foot, params, n_inj, seed):
+def run(counts, foot, params, n_inj, seed) -> tuple:
     rng = np.random.default_rng(seed)
     n_s, n_t, n_w = counts.shape
     order = np.argsort(foot)

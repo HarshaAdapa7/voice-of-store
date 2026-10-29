@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 import pytest
 
@@ -13,6 +14,8 @@ from voice_of_store.web.server import create_app  # noqa: E402
 
 WEEK, REGION = "2026-08-03", "South"
 XSS = "<script>alert(1)</script>"
+API_KEY = secrets.token_urlsafe(16)
+TEST_PASSWORD = secrets.token_urlsafe(12)  # random for each run: no credential is written in the repository
 
 
 class StubState:
@@ -254,11 +257,11 @@ def test_rate_limiter_memory_is_bounded():
 
 
 def test_api_key_when_configured():
-    c = make(api_key="s3cret-key-value")
+    c = make(api_key=API_KEY)
     body = dict(text="hello", channel="in_app")
     assert c.post("/api/classify", json=body).status_code == 401
     assert c.post("/api/classify", json=body, headers={"X-API-Key": "wrong"}).status_code == 401
-    assert c.post("/api/classify", json=body, headers={"X-API-Key": "s3cret-key-value"}).status_code == 200
+    assert c.post("/api/classify", json=body, headers={"X-API-Key": API_KEY}).status_code == 200
     assert c.get("/api/meta").status_code == 200  # read-only analytics stay open on the private network
 
 
@@ -277,7 +280,7 @@ def test_no_cookies_set(client):
 def _auth_client(**kw):
     from werkzeug.security import generate_password_hash
 
-    h = generate_password_hash("correct horse battery", method="scrypt:4096:8:1")  # cheap cost: this is a test
+    h = generate_password_hash(TEST_PASSWORD, method="scrypt:4096:8:1")  # cheap cost: this is a test
     return make(auth_user="judge", auth_hash=h, **kw)
 
 
@@ -294,7 +297,7 @@ def test_login_protects_every_page_and_api():
         assert r.status_code == 401 and r.headers["WWW-Authenticate"].startswith("Basic"), path
     assert c.post("/api/classify", json=dict(text="hi", channel="in_app")).status_code == 401
     assert c.get("/api/health").status_code == 200  # health check only, no data
-    good = _basic("judge", "correct horse battery")
+    good = _basic("judge", TEST_PASSWORD)
     assert c.get("/api/meta", headers=good).status_code == 200
     assert c.post("/api/classify", json=dict(text="hi", channel="in_app"), headers=good).status_code == 200
     assert c.get("/api/meta", headers=good).headers["Cache-Control"] == "no-store"
@@ -317,7 +320,7 @@ def test_login_rejects_malformed_credentials(hdr):
 def test_login_rejects_wrong_user_or_password():
     c = _auth_client()
     assert c.get("/api/meta", headers=_basic("judge", "wrong password!!")).status_code == 401
-    assert c.get("/api/meta", headers=_basic("admin", "correct horse battery")).status_code == 401
+    assert c.get("/api/meta", headers=_basic("admin", TEST_PASSWORD)).status_code == 401
     assert c.get("/api/meta", headers=_basic("judge", "")).status_code == 401
 
 
@@ -327,7 +330,7 @@ def test_failed_logins_are_rate_limited():
     assert codes == [401, 401, 401, 429, 429]
     # the limiter also stops a correct password being tried after many failures from the same client only for failures;
     # a correct login still works
-    assert c.get("/api/meta", headers=_basic("judge", "correct horse battery")).status_code == 200
+    assert c.get("/api/meta", headers=_basic("judge", TEST_PASSWORD)).status_code == 200
 
 
 def test_auth_env_needs_both_values(monkeypatch):
@@ -384,7 +387,7 @@ def test_assistant_and_store_need_login_when_configured():
     c = _auth_client()
     assert c.post("/api/assistant", json={"message": "hello"}).status_code == 401
     assert c.get("/api/store", query_string={"store_id": "ST-ABCDE", "week": WEEK}).status_code == 401
-    good = _basic("judge", "correct horse battery")
+    good = _basic("judge", TEST_PASSWORD)
     assert c.post("/api/assistant", json={"message": "hello"}, headers=good).status_code == 200
 
 
@@ -486,6 +489,8 @@ class FlagStub(StubState):
                 owner="Store Ops",
                 confidence=0.7,
                 evidence=[dict(channel="in_app", text="a"), dict(channel="in_app", text="b")],
+                change=dict(summary="2 reports against a usual 0.5"),
+                next_step="Check the log.",
             )
         ]
 
@@ -587,7 +592,7 @@ def test_real_flags_explain_what_changed_and_brief_shows_evidence_fields(real):
         if e["safety"] and e["tier"] == "UNVERIFIED":
             assert "allegation" in e["status"]
     page = c.get("/brief", query_string={"region": state.regions[0], "week": week}).get_data(as_text=True)
-    assert "Next step:" in page and "Per 10,000 weekly visits" in page and "approximation" in page
+    assert "Next step:" in page and "10,000 weekly visits" in page and "approximate" in page
 
 
 def test_report_routes_are_strict_and_script_free(client):
@@ -604,7 +609,7 @@ def test_report_routes_are_strict_and_script_free(client):
 def test_report_needs_login_when_configured():
     c = _auth_client()
     assert c.get("/report").status_code == 401 and c.get("/api/report").status_code == 401
-    assert c.get("/report", headers=_basic("judge", "correct horse battery")).status_code == 200
+    assert c.get("/report", headers=_basic("judge", TEST_PASSWORD)).status_code == 200
 
 
 def test_real_report_endpoints(real):
@@ -612,3 +617,26 @@ def test_real_report_endpoints(real):
     page = c.get("/report")
     assert page.status_code == 200 and b"Precision statement" in page.data and b"<script" not in page.data
     assert "escalation" in c.get("/api/report").get_json()
+
+
+def test_flags_csv_has_the_documented_columns_and_stays_one_row_per_flag():
+    from voice_of_store.web.server import CSV_HEAD, flags_csv
+
+    f = dict(
+        store_id="ST-1",
+        store='Store, "quoted"\nline',
+        region=REGION,
+        issue_type="IT10",
+        issue="Refrigeration",
+        owner="Store Ops",
+        confidence=0.5,
+        evidence=[1, 2],
+        change=dict(summary="+SUM(A1)"),
+        next_step="-do it",
+    )
+    import csv
+    import io
+
+    rows = list(csv.reader(io.StringIO(flags_csv(WEEK, [f]))))
+    assert rows[0] == CSV_HEAD and len(rows) == 2 and len(rows[1]) == len(CSV_HEAD)
+    assert rows[1][CSV_HEAD.index("what_changed")].startswith("'+") and rows[1][CSV_HEAD.index("next_step")].startswith("'-")

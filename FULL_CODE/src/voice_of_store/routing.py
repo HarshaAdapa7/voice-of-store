@@ -16,10 +16,12 @@ ESCALATION_RULE = (
 
 
 def owner_of(issue_type: str, taxonomy: pd.DataFrame) -> str:
+    """Owning function from the supplied taxonomy."""
     return str(taxonomy.loc[issue_type, "owner_function"])
 
 
 def action_window(severity: str, issue_type: str, emerging: bool) -> str:
+    """How soon the owner should act: same day for critical or safety types, 48 hours for high or emerging, else weekly."""
     if severity == "critical" or issue_type in SAFETY_TYPES:
         return "same day"
     if emerging or severity == "high":

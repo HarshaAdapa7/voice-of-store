@@ -12,6 +12,8 @@ def locality(store_name: str) -> str:
 
 
 class StoreResolver:
+    """Resolve a record to a store from its recorded id or a single named locality."""
+
     def __init__(self, stores: pd.DataFrame):
         self.locality = {r.store_id: locality(r.store_name) for r in stores.itertuples()}
         # longest locality first so "Salt Lake City" wins over "Salt Lake"
@@ -19,6 +21,7 @@ class StoreResolver:
         self.valid = set(self.locality)
 
     def names_in_text(self, text: str) -> list[str]:
+        """Stores whose locality appears in the text, longest locality first."""
         low = str(text).lower()
         return [sid for sid, loc in self._ordered if loc and loc in low]
 
@@ -36,6 +39,7 @@ class StoreResolver:
         return hits[0] if len(hits) == 1 else None
 
     def resolve_frame(self, df: pd.DataFrame) -> pd.Series:
+        """Resolve every row of a frame."""
         return pd.Series(
             [self.resolve(s, t) for s, t in zip(df["store_id"], df["text"], strict=False)], index=df.index, dtype=object
         )

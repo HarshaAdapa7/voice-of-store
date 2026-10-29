@@ -16,7 +16,9 @@ BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8000").rstrip("/
 PAYLOADS = ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "' OR 1=1 --", "{{7*7}}", "../../etc/passwd", "\x00"]
 
 
-def call(method: str, path: str, body: object = None, headers: dict | None = None, raw: bytes | None = None):
+def call(
+    method: str, path: str, body: object = None, headers: dict | None = None, raw: bytes | None = None
+) -> tuple[int, dict, str]:
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
     h = {"Content-Type": "application/json", **(headers or {})}
     req = urllib.request.Request(BASE + path, data=data, headers=h, method=method)  # noqa: S310 (own URL)

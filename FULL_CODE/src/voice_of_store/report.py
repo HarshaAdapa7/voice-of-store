@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import f1_score
 
 from . import config as C
@@ -11,7 +12,7 @@ from .io import Data, week_start_of
 from .stores import StoreResolver
 
 
-def split_predictions(data: Data, resolver: StoreResolver, train_weeks: int = 9):
+def split_predictions(data: Data, resolver: StoreResolver, train_weeks: int = 9) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Train on labelled rows of the first `train_weeks` weeks and predict the later labelled rows. Out of sample and
     forward in time, so it is the closest local proxy for the hidden test weeks. Returns (truth + features, predictions)."""
     fb = data.feedback.copy()
@@ -51,6 +52,7 @@ def time_split_validation(data: Data, resolver: StoreResolver, train_weeks: int 
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> tuple:
+    """Wilson 95 percent interval for k successes in n trials."""
     if n == 0:
         return (float("nan"), float("nan"))
     p = k / n

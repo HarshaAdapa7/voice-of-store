@@ -43,5 +43,6 @@ def valid_evidence_count(
     week_end_excl: str,
     resolver: StoreResolver,
 ) -> int:
+    """How many of the cited ids would pass the scorer's four checks for this store, week and type."""
     chosen = select_evidence(week_rows, store_id, itype, week_start, week_end_excl, resolver, limit=10**6)
     return len(set(ids) & set(chosen))

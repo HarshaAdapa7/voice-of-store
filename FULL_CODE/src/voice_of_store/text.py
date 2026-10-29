@@ -12,6 +12,7 @@ _DIGITS = re.compile(r"\d{4,}")
 
 
 def normalise(text: str) -> str:
+    """Lower-case, fold look-alike characters and collapse whitespace for the model."""
     t = str(text).lower()
     t = _URL.sub(" url ", t)
     t = _DIGITS.sub(" num ", t)  # redacted ids / phone numbers carry no signal
