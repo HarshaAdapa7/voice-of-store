@@ -312,6 +312,8 @@ def _register_upload_route(app: Flask, state: AppState) -> None:
         if len(raw_bytes) > 10 * 1024 * 1024:
             return jsonify(error="File exceeds maximum 10MB limit"), 413
         default_date = request.form.get("default_date") or None
+        custom_key = request.headers.get("X-Gemini-API-Key", "").strip().strip("'\"")
+        active_structurer = LLMStructurer(api_key=custom_key) if custom_key else structurer
         try:
             chunks = parse_file(f.filename, raw_bytes)
             if not chunks:
@@ -319,7 +321,9 @@ def _register_upload_route(app: Flask, state: AppState) -> None:
             store_names_hint = list(state.store_name.values())
             raw_records = []
             for ch in chunks[:15]:
-                raw_records.extend(structurer.structure_chunk(ch, store_names_hint=store_names_hint, default_date=default_date))
+                raw_records.extend(
+                    active_structurer.structure_chunk(ch, store_names_hint=store_names_hint, default_date=default_date)
+                )
             validator = IngestionValidator(state.data.stores, state.resolver)
             validated_records, stats = validator.validate_candidate_records(raw_records)
             return jsonify(records=_format_ingested_records(validated_records), stats=stats, filename=f.filename)

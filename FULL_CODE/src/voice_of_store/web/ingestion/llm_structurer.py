@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -65,15 +66,61 @@ class LLMStructurer:
     def enabled(self) -> bool:
         return bool(self.api_key and len(self.api_key) > 10)
 
+    @staticmethod
+    def _classify_raw_channel(raw_chan: str) -> str:
+        """Map raw channel text to canonical channel identifier."""
+        if "review" in raw_chan:
+            return "online_review"
+        if "app" in raw_chan:
+            return "in_app"
+        if any(k in raw_chan for k in ("shift", "handover", "staff", "note", "duty")):
+            return "staff_shift_note"
+        if any(k in raw_chan for k in ("call", "ticket", "helpline", "centre", "center")):
+            return "call_centre_ticket"
+        return "in_app"
+
+    def _heuristic_extract(self, raw_text: str, source_ref: str, default_date: str | None = None) -> list[dict]:
+        """Deterministic pattern extractor when Gemini API is unconfigured or unreachable."""
+        records: list[dict] = []
+        blocks = re.split(r"\n(?=(?:[^\n]+:.*?\n)?Date:\s*\d{4}-\d{2}-\d{2})", raw_text)
+        for b in blocks:
+            b = b.strip()
+            if not b:
+                continue
+            m_date = re.search(r"Date:\s*(\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?)", b)
+            m_chan = re.search(r"Channel:\s*([^|\n]+)", b)
+            m_store = re.search(r"Store:\s*([^|\n]+)", b)
+            chan = self._classify_raw_channel(m_chan.group(1).strip().lower() if m_chan else "")
+            lines = [
+                line.strip()
+                for line in b.splitlines()
+                if not line.startswith("Date:")
+                and not ("|" in line and "Channel:" in line)
+                and not line.startswith("Monthly feedback")
+                and not line.startswith("Saffron Retail Chain")
+            ]
+            text = " ".join(lines).strip()
+            if text:
+                records.append(
+                    {
+                        "created_at": m_date.group(1).strip() if m_date else (default_date or ""),
+                        "channel": chan,
+                        "store_mention": m_store.group(1).strip() if m_store else "",
+                        "text": text,
+                        "source_reference": source_ref,
+                    }
+                )
+        return records
+
     def structure_chunk(
         self,
         chunk: DocumentChunk,
         store_names_hint: list[str] | None = None,
         default_date: str | None = None,
     ) -> list[dict]:
-        """Call Gemini to convert an unstructured chunk into structured records."""
+        """Call Gemini or fallback heuristic parser to convert chunk into structured records."""
         if not self.enabled:
-            raise ValueError("API key is not configured in .env file.")
+            return self._heuristic_extract(chunk.raw_text, chunk.source_reference, default_date)
 
         hint_text = ""
         if store_names_hint:
@@ -100,7 +147,11 @@ class LLMStructurer:
             },
         }
 
-        return self._extract_with_fallback(body, chunk.source_reference)
+        try:
+            return self._extract_with_fallback(body, chunk.source_reference)
+        except Exception as exc:
+            log.warning("Gemini extraction error (%s); falling back to heuristic parsing", exc)
+            return self._heuristic_extract(chunk.raw_text, chunk.source_reference, default_date)
 
     def _extract_with_fallback(self, body: dict, source_ref: str) -> list[dict]:
         """Try candidate Gemini models sequentially."""

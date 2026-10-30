@@ -1654,8 +1654,12 @@ function setupIngest() {
 
     try {
       console.log("Extracting records from:", SELECTED_FILE.name);
+      const customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key") || "";
+      const uploadHeaders = {};
+      if (customKey) uploadHeaders["X-Gemini-API-Key"] = customKey;
       const resp = await fetch("/api/ingest/upload", {
         method: "POST",
+        headers: uploadHeaders,
         body: fd
       });
       const data = await resp.json();
@@ -1668,7 +1672,6 @@ function setupIngest() {
       errorBox.textContent = "Extraction Error: " + err.message;
       errorBox.hidden = false;
       errorBox.style.display = "block";
-      alert("Extraction error: " + err.message);
     } finally {
       spinner.hidden = true;
       spinner.style.display = "none";
