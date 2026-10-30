@@ -29,7 +29,7 @@ log = logging.getLogger("voice_of_store.web")
 
 JSON_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 PAGE_CSP = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
+    "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; "
     "require-trusted-types-for 'script'; trusted-types 'none'"
 )
@@ -177,6 +177,12 @@ def _post_checks(cfg: SecurityConfig, limiter: RateLimiter, client: str) -> Resp
         return _err(403, "cross-origin request refused")
     if request.headers.get("Sec-Fetch-Site") not in (None, "same-origin", "none"):
         return _err(403, "cross-site request refused")
+    if request.path == "/api/ingest/upload":
+        if not request.content_type or not request.content_type.startswith("multipart/form-data"):
+            return _err(415, "content type must be multipart/form-data")
+        return None
+    if request.path == "/api/ingest/reset":
+        return None
     if request.mimetype != "application/json":
         return _err(415, "content type must be application/json")
     bucket, limit = (
@@ -292,7 +298,7 @@ def _register_errors(app: Flask) -> None:
 def install(app: Flask, cfg: SecurityConfig) -> None:
     """Attach every control to the app: guard before each request, headers after, generic error pages."""
     limiter = RateLimiter(cfg.max_tracked_clients)
-    app.config["MAX_CONTENT_LENGTH"] = cfg.max_body_bytes
+    app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
     app.before_request(lambda: _guard(cfg, limiter))
     app.after_request(lambda resp: _add_headers(cfg, resp))
     _register_errors(app)

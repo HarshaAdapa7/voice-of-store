@@ -131,9 +131,9 @@ def test_submission_files_if_present():  # T01/T02/T50 on the committed files
     assert validate_predictions(pd.read_csv(sub / "R5_predictions.csv"), fb["feedback_id"]) == []
     flags = pd.read_csv(sub / "R5_emerging_flags.csv")
     assert validate_flags(flags) == []
-    cmd = (sub / "detector_cmd.txt").read_text().strip()
+    cmd = (sub / "detector_cmd.txt").read_text(encoding="utf-8").strip()
     assert cmd == "python FULL_CODE/detect.py --feedback {feedback} --as-of {asof} --out {out}"
-    assert len(flags) / 13 <= C.MAX_FLAGS_PER_WEEK
+    assert len(flags) / flags["as_of_week_start"].nunique() <= C.MAX_FLAGS_PER_WEEK
 
 
 def test_classifier_policy(data_dir):  # T10-T14: severity floor, non-issue low, IT27 at least medium, actionable gates
@@ -197,9 +197,9 @@ def test_briefing_run_writes_pages_report_and_validation(tmp_path):
     n = run(root / "data", root / "submission", tmp_path, from_week_index=25)
     assert n == 10  # 2 weeks x 5 regions
     pages = sorted((tmp_path / "briefs").glob("*/*.html"))
-    assert len(pages) == 10 and all("Escalation rule" in p.read_text() for p in pages)
+    assert len(pages) == 10 and all("Escalation rule" in p.read_text(encoding="utf-8") for p in pages)
     assert (tmp_path / "report.html").exists() and (tmp_path / "validation.md").exists()
-    assert "Precision statement" in (tmp_path / "validation.md").read_text()
+    assert "Precision statement" in (tmp_path / "validation.md").read_text(encoding="utf-8")
 
 
 def test_submission_pieces_are_valid_and_the_command_file_is_exact(tmp_path):
@@ -215,4 +215,4 @@ def test_submission_pieces_are_valid_and_the_command_file_is_exact(tmp_path):
     assert validate_predictions(pred, data.feedback["feedback_id"]) == []
     flags = pd.read_csv(root / "submission" / "R5_emerging_flags.csv")
     assert validate_flags(flags) == []
-    assert DETECTOR_CMD == (root / "submission" / "detector_cmd.txt").read_text()
+    assert DETECTOR_CMD == (root / "submission" / "detector_cmd.txt").read_text(encoding="utf-8")

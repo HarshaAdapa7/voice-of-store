@@ -87,6 +87,14 @@
         </svg>
         <span>Precision &amp; Report</span>
       </button>
+      <button role="tab" id="tab-ingest" aria-controls="view-ingest" tabindex="-1" data-view="ingest" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <span>Upload &amp; Ingest</span>
+      </button>
     </nav>
   </aside>
   <div class="app-main">
@@ -112,6 +120,13 @@
         </div>
       </div>
     </header>
+    <div id="dataset-banner" class="dataset-banner" style="display:none;">
+      <div class="dataset-banner-info">
+        <span class="dataset-pill">CUSTOM DATASET ACTIVE</span>
+        <span id="dataset-banner-text">Uploaded Dataset</span>
+      </div>
+      <button id="dataset-reset-btn" class="btn btn-sm btn-outline">Switch Back to Default</button>
+    </div>
     <main class="content-area" id="main" tabindex="-1">
       <section role="tabpanel" aria-labelledby="tab-overview" id="view-overview">
         <div class="controls-bar">
@@ -263,7 +278,7 @@
       <section role="tabpanel" aria-labelledby="tab-ask" id="view-ask" hidden>
         <div class="card">
           <h2 class="card-title">Store Operations Assistant</h2>
-          <p class="sub-meta">Ask about stores, regions, emerging issues, owners, or escalation policy. Local answers are deterministic; optional Gemini summaries use only the redacted local result, never your question or raw feedback.</p>
+          <p class="sub-meta">Ask about stores, regions, emerging issues, owners, or escalation policy. Local answers are deterministic; optional AI summaries use only the redacted local result, never your question or raw feedback.</p>
           <div class="chips-container" id="chips"></div>
           <div class="chat-container" id="chat" role="log" aria-live="polite" aria-label="Investigation Conversation"></div>
           <form class="chat-form" id="askform">
@@ -271,10 +286,10 @@
               <span class="control-label">Answer mode</span>
               <select id="assistant-mode" aria-label="Assistant answer mode">
                 <option value="local">Local</option>
-                <option value="gemini">Local + Gemini summary</option>
+                <option value="gemini">Local + AI summary</option>
               </select>
             </label>
-            <button class="btn btn-outline gemini-key-btn" type="button" id="btn-gemini-key" title="Configure or update Gemini API Key">🔑 Gemini Key</button>
+            <button class="btn btn-outline gemini-key-btn" type="button" id="btn-gemini-key" title="Configure API Key">API Key</button>
             <input class="chat-input" id="question" type="text" maxlength="300" autocomplete="off" placeholder="e.g. Which stores have rising refrigeration complaints?">
             <button class="btn btn-primary" type="submit">Ask</button>
             <button class="btn btn-outline" type="button" id="clearchat">Clear Chat</button>
@@ -307,6 +322,90 @@
       </section>
       <section role="tabpanel" aria-labelledby="tab-precision" id="view-precision" hidden>
         <div id="precision" aria-live="polite"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-ingest" id="view-ingest" hidden>
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-header">
+            <h3>Unstructured Document Ingestion &amp; Automated Structuring</h3>
+            <p class="text-muted">Upload unstructured documents (PDF, TXT, or CSV) containing reviews, tickets, or store notes. The automated pipeline will extract, structure, and align records to the Voice-of-Store schema.</p>
+          </div>
+          <div class="card-body">
+            <div class="upload-dropzone" id="ingest-dropzone">
+              <input type="file" id="ingest-file-input" accept=".txt,.csv,.pdf" hidden style="display:none !important;">
+              <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <h4 id="ingest-filename-display">Click to select or drag &amp; drop file here</h4>
+              <p class="text-muted">Supported formats: PDF, TXT, CSV (Max 10 MB)</p>
+            </div>
+
+            <div style="margin-top: 15px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 220px;">
+                <label class="control-label" for="ingest-default-date">Fallback Date (used if document lacks explicit dates)</label>
+                <input type="date" id="ingest-default-date" class="form-control" value="2026-06-15" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+              </div>
+              <div>
+                <button type="button" id="ingest-start-btn" class="btn btn-primary" style="padding: 9px 18px; cursor: pointer;">
+                  <span>Extract &amp; Structure Records</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="ingest-spinner" hidden style="display: none; text-align: center; margin: 25px 0;">
+              <div class="spinner"></div>
+              <p style="margin-top: 12px; color: var(--teal-primary); font-weight: 600;">Extracting and structuring records from your document... Please wait.</p>
+            </div>
+
+            <div id="ingest-error" class="alert alert-danger" hidden style="display:none; margin-top: 15px;"></div>
+          </div>
+        </div>
+
+        <div id="ingest-results-card" class="card" hidden style="display:none;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3>Extracted Structured Records</h3>
+              <p class="text-muted" id="ingest-summary-text">Review and verify records before downloading or analyzing.</p>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button id="ingest-export-btn" class="btn btn-outline" style="padding: 8px 14px; display: flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Download Structured CSV</span>
+              </button>
+              <button id="ingest-analyze-btn" class="btn btn-primary" style="padding: 8px 14px; display: flex; align-items: center; gap: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Analyze on this Dataset</span>
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div style="display: flex; gap: 12px; margin-bottom: 15px; flex-wrap: wrap;">
+              <span class="badge" style="background: var(--info-soft); color: var(--info-text); padding: 5px 10px; border-radius: 4px; font-weight: 600;" id="stat-total">Total: 0</span>
+              <span class="badge" style="background: var(--success-soft); color: var(--success-text); padding: 5px 10px; border-radius: 4px; font-weight: 600;" id="stat-valid">Valid: 0</span>
+              <span class="badge" style="background: var(--warning-soft); color: var(--warning-text); padding: 5px 10px; border-radius: 4px; font-weight: 600;" id="stat-review-store">Store Review: 0</span>
+              <span class="badge" style="background: var(--warning-soft); color: var(--warning-text); padding: 5px 10px; border-radius: 4px; font-weight: 600;" id="stat-review-date">Date Review: 0</span>
+            </div>
+
+            <div style="max-height: 480px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
+              <table class="data-table" id="ingest-preview-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                <thead style="position: sticky; top: 0; background: var(--bg-surface); z-index: 2;">
+                  <tr style="border-bottom: 2px solid var(--border-color);">
+                    <th style="padding: 10px; width: 60px;">Exclude</th>
+                    <th style="padding: 10px; width: 90px;">ID</th>
+                    <th style="padding: 10px; width: 100px;">Source</th>
+                    <th style="padding: 10px; width: 120px;">Channel</th>
+                    <th style="padding: 10px; width: 140px;">Created At</th>
+                    <th style="padding: 10px; width: 160px;">Store</th>
+                    <th style="padding: 10px;">Verbatim Text</th>
+                    <th style="padding: 10px; width: 100px;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="ingest-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
   </div>

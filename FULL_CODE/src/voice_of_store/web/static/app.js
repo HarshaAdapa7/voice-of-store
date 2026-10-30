@@ -1350,7 +1350,7 @@ async function ask(message) {
     if (r.llm_summary) {
       box.append(
         el("div", { class: "item" },
-          el("b", {}, "Gemini summary, generated from the local result"),
+          el("b", {}, "AI summary, generated from the local result"),
           el("div", { class: "sub-meta" }, r.llm_summary)
         )
       );
@@ -1367,9 +1367,9 @@ async function ask(message) {
     const is503 = e.message && e.message.includes("503");
     const is502 = e.message && e.message.includes("502");
     let errNote = is503
-      ? "Gemini API mode is not configured on this server instance. If running in VS Code, please restart your server (Ctrl+C then re-run) to load the latest code, or check your API key."
+      ? "AI summary mode is not configured on this server instance. If running in VS Code, please restart your server (Ctrl+C then re-run) to load the latest code, or check your API key."
       : is502
-      ? "Google Gemini API was reached but returned an error (verify your API key and network connection). Local mode remains fully operational."
+      ? "AI service was reached but returned an error (verify your API key and network connection). Local mode remains fully operational."
       : "Unable to complete request: " + e.message + ". Please try asking in Local mode or about a store/region.";
     say("bot", errNote);
   }
@@ -1385,17 +1385,17 @@ function setupAsk(suggestions) {
     const serverConfigured = META.assistant_modes && META.assistant_modes.gemini;
     if (customKey || serverConfigured) {
       geminiOption.disabled = false;
-      geminiOption.textContent = "Local + Gemini summary";
+      geminiOption.textContent = "Local + AI summary";
       if (keyBtn) {
         keyBtn.textContent = customKey ? "🔑 Key Active" : "🔑 Server Key";
-        keyBtn.title = customKey ? "Gemini key active from session" : "Gemini key configured on server";
+        keyBtn.title = customKey ? "API key active from session" : "API key configured on server";
       }
     } else {
       geminiOption.disabled = false;
-      geminiOption.textContent = "Local + Gemini summary (enter key)";
+      geminiOption.textContent = "Local + AI summary (enter key)";
       if (keyBtn) {
-        keyBtn.textContent = "🔑 Set Gemini Key";
-        keyBtn.title = "Click to enter Google Gemini API key";
+        keyBtn.textContent = "Set API Key";
+        keyBtn.title = "Click to enter API key";
       }
     }
   }
@@ -1403,7 +1403,7 @@ function setupAsk(suggestions) {
   if (keyBtn) {
     keyBtn.addEventListener("click", () => {
       const current = sessionStorage.getItem("gemini_api_key") || "";
-      const val = prompt("Enter Google Gemini API Key (starts with AIzaSy...):", current);
+      const val = prompt("Enter API Key (starts with AIzaSy...):", current);
       if (val !== null) {
         const trimmed = val.trim();
         if (trimmed) {
@@ -1479,6 +1479,300 @@ function setupTryPresets() {
       return b;
     })
   );
+}
+
+
+function updateDatasetBanner(dataset) {
+  const banner = $("dataset-banner");
+  if (!banner) return;
+  if (dataset && dataset.is_custom) {
+    banner.style.display = "flex";
+    $("dataset-banner-text").textContent = (dataset.name || "Custom Upload") + " · " + (dataset.row_count || 0) + " records · " + (dataset.date_min || "") + " to " + (dataset.date_max || "");
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+let CURRENT_INGESTED_RECORDS = [];
+let SELECTED_FILE = null;
+
+function setupIngest() {
+  const dropzone = $("ingest-dropzone");
+  const fileInput = $("ingest-file-input");
+  const startBtn = $("ingest-start-btn");
+  const filenameDisplay = $("ingest-filename-display");
+  const spinner = $("ingest-spinner");
+  const errorBox = $("ingest-error");
+  const resultsCard = $("ingest-results-card");
+  const tbody = $("ingest-tbody");
+  const exportBtn = $("ingest-export-btn");
+  const analyzeBtn = $("ingest-analyze-btn");
+
+  if (!dropzone) return;
+
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+  });
+
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("dragover");
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      handleFileSelected(fileInput.files[0]);
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) handleFileSelected(fileInput.files[0]);
+  });
+
+  function handleFileSelected(file) {
+    SELECTED_FILE = file;
+    filenameDisplay.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
+    startBtn.disabled = false;
+    startBtn.removeAttribute("disabled");
+    errorBox.hidden = true;
+    errorBox.style.display = "none";
+    // Trigger extraction immediately upon file selection
+    startExtraction();
+  }
+
+  async function startExtraction() {
+    if (!SELECTED_FILE) {
+      alert("Please select a file to upload first by clicking the upload box.");
+      return;
+    }
+    spinner.hidden = false;
+    spinner.style.display = "block";
+    errorBox.hidden = true;
+    errorBox.style.display = "none";
+    resultsCard.hidden = true;
+    resultsCard.style.display = "none";
+    startBtn.disabled = true;
+    startBtn.setAttribute("disabled", "true");
+
+    const fd = new FormData();
+    fd.append("file", SELECTED_FILE);
+    const defDate = $("ingest-default-date").value;
+    if (defDate) fd.append("default_date", defDate);
+
+    try {
+      console.log("Extracting records from:", SELECTED_FILE.name);
+      const resp = await fetch("/api/ingest/upload", {
+        method: "POST",
+        body: fd
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Extraction failed");
+
+      CURRENT_INGESTED_RECORDS = data.records || [];
+      renderIngestResults(CURRENT_INGESTED_RECORDS, data.stats || {});
+    } catch (err) {
+      console.error("Extraction error:", err);
+      errorBox.textContent = "Extraction Error: " + err.message;
+      errorBox.hidden = false;
+      errorBox.style.display = "block";
+      alert("Extraction error: " + err.message);
+    } finally {
+      spinner.hidden = true;
+      spinner.style.display = "none";
+      startBtn.disabled = false;
+      startBtn.removeAttribute("disabled");
+    }
+  }
+
+  startBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    startExtraction();
+  });
+
+  function renderIngestResults(records, stats) {
+    resultsCard.hidden = false;
+    resultsCard.style.display = "block";
+    setTimeout(() => resultsCard.scrollIntoView({ behavior: "smooth" }), 100);
+    $("stat-total").textContent = "Total: " + (stats.total || records.length);
+    $("stat-valid").textContent = "Valid: " + (stats.valid || 0);
+    $("stat-review-store").textContent = "Store Review: " + (stats.review_store || 0);
+    $("stat-review-date").textContent = "Date Review: " + (stats.review_date || 0);
+
+    tbody.replaceChildren();
+
+    records.forEach((r, idx) => {
+      const tr = el("tr", { style: "border-bottom: 1px solid var(--border-color);" });
+
+      // Exclude checkbox
+      const tdExclude = el("td", { style: "padding: 8px; text-align: center;" });
+      const chk = el("input", { type: "checkbox" });
+      chk.addEventListener("change", () => {
+        r._excluded = chk.checked;
+        tr.style.opacity = chk.checked ? "0.4" : "1.0";
+      });
+      tdExclude.appendChild(chk);
+
+      // Feedback ID
+      const tdId = el("td", { style: "padding: 8px; font-weight: 600; font-family: monospace;" }, r.feedback_id);
+
+      // Source ref
+      const tdSrc = el("td", { style: "padding: 8px; color: var(--text-muted); font-size: 12px;" }, r.source_reference || "-");
+
+      // Channel select
+      const tdChannel = el("td", { style: "padding: 8px;" });
+      const chSel = el("select", { class: "form-control", style: "padding: 4px; font-size: 12px;" });
+      ["online_review", "in_app", "staff_shift_note", "call_centre_ticket"].forEach((c) => {
+        const opt = el("option", { value: c }, c);
+        if (c === r.channel) opt.selected = true;
+        chSel.appendChild(opt);
+      });
+      chSel.addEventListener("change", () => { r.channel = chSel.value; });
+      tdChannel.appendChild(chSel);
+
+      // Created at input
+      const tdDate = el("td", { style: "padding: 8px;" });
+      const dateInp = el("input", {
+        type: "text",
+        value: r.created_at,
+        class: "form-control",
+        style: "padding: 4px; font-size: 12px; width: 130px;"
+      });
+      dateInp.addEventListener("input", () => { r.created_at = dateInp.value; });
+      tdDate.appendChild(dateInp);
+
+      // Store select
+      const tdStore = el("td", { style: "padding: 8px;" });
+      const stSel = el("select", { class: "form-control", style: "padding: 4px; font-size: 12px; width: 150px;" });
+      const emptyOpt = el("option", { value: "" }, "-- Unknown Store --");
+      stSel.appendChild(emptyOpt);
+      (META.stores || []).forEach((s) => {
+        const opt = el("option", { value: s.id }, s.name + " (" + s.region + ")");
+        if (s.id === r.store_id) opt.selected = true;
+        stSel.appendChild(opt);
+      });
+      stSel.addEventListener("change", () => {
+        r.store_id = stSel.value;
+        const matched = (META.stores || []).find((x) => x.id === r.store_id);
+        if (matched) {
+          r.store_name = matched.name;
+          r.region = matched.region;
+        }
+      });
+      tdStore.appendChild(stSel);
+
+      // Text input
+      const tdText = el("td", { style: "padding: 8px;" });
+      const textInp = el("input", {
+        type: "text",
+        value: r.text,
+        class: "form-control",
+        style: "width: 100%; padding: 4px; font-size: 12px;"
+      });
+      textInp.addEventListener("input", () => { r.text = textInp.value; });
+      tdText.appendChild(textInp);
+
+      // Status pill
+      const tdStatus = el("td", { style: "padding: 8px;" });
+      const isOk = r.status === "valid";
+      const statusPill = el("span", {
+        class: "badge",
+        style: isOk
+          ? "background: var(--success-soft); color: var(--success-text); padding: 3px 6px; border-radius: 4px; font-size: 11px;"
+          : "background: var(--warning-soft); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-size: 11px;",
+        title: r.notes || ""
+      }, isOk ? "VALID" : "REVIEW");
+      tdStatus.appendChild(statusPill);
+
+      tr.append(tdExclude, tdId, tdSrc, tdChannel, tdDate, tdStore, tdText, tdStatus);
+      tbody.appendChild(tr);
+    });
+  }
+
+  exportBtn.addEventListener("click", async () => {
+    const valid = CURRENT_INGESTED_RECORDS.filter((r) => !r._excluded);
+    if (!valid.length) {
+      alert("No active records to export.");
+      return;
+    }
+    try {
+      const resp = await fetch("/api/ingest/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: valid })
+      });
+      if (!resp.ok) throw new Error("Export failed");
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (SELECTED_FILE ? SELECTED_FILE.name.replace(/\.[^/.]+$/, "") : "ingested") + "_structured.csv";
+      a.click();
+    } catch (err) {
+      alert("Download failed: " + err.message);
+    }
+  });
+
+  analyzeBtn.addEventListener("click", async () => {
+    const valid = CURRENT_INGESTED_RECORDS.filter((r) => !r._excluded);
+    if (!valid.length) {
+      alert("No active records to analyze.");
+      return;
+    }
+    const confirmed = confirm(
+      "Analyze " + valid.length + " extracted records in the dashboard?\n\n" +
+      "This will update Regional Briefs, Emerging Issues, and Stores to reflect this custom dataset."
+    );
+    if (!confirmed) return;
+
+    analyzeBtn.disabled = true;
+    try {
+      const resp = await fetch("/api/ingest/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          records: valid,
+          name: SELECTED_FILE ? SELECTED_FILE.name : "Custom Upload"
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Analysis failed");
+
+      CACHED_FLAGS = {};
+      CACHED_BRIEFS = {};
+      META = await api("/api/meta");
+      updateDatasetBanner(data.dataset);
+
+      fill($("ov-week"), META.test_weeks);
+      fill($("week"), META.test_weeks);
+      fill($("eweek"), META.test_weeks);
+      $("ov-week").value = META.test_weeks[0];
+      $("week").value = $("ov-week").value;
+      $("eweek").value = $("ov-week").value;
+
+      if ($("ov-store")) $("ov-store").value = "ALL";
+      if ($("brief-store")) $("brief-store").value = "ALL";
+
+      const firstReg = valid.find((r) => r.region)?.region;
+      if (firstReg && META.regions.includes(firstReg)) {
+        $("ov-region").value = firstReg;
+        $("region").value = firstReg;
+        updateBriefStores(firstReg);
+        updateOverviewStores(firstReg);
+      }
+
+      alert("Dataset successfully activated! Showing analysis on the new data.");
+      const tabOverview = $("tab-overview");
+      if (tabOverview) tabOverview.click();
+    } catch (err) {
+      alert("Analysis error: " + err.message);
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
 }
 
 async function init() {
@@ -1603,7 +1897,7 @@ async function init() {
     });
 
     const viewName = btn.dataset.view;
-    const allViews = ["overview", "brief", "emerging", "stores", "queue", "ask", "try", "precision"];
+    const allViews = ["overview", "brief", "emerging", "stores", "queue", "ask", "try", "precision", "ingest"];
     allViews.forEach((v) => {
       const section = $("view-" + v);
       if (section) section.hidden = v !== viewName;
@@ -1641,6 +1935,34 @@ async function init() {
       }
     });
   });
+
+  updateDatasetBanner(META.dataset);
+
+  const resetBtn = $("dataset-reset-btn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", async () => {
+      if (!confirm("Are you sure you want to switch back to the original default dataset?")) return;
+      try {
+        const res = await api("/api/ingest/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        CACHED_FLAGS = {};
+        CACHED_BRIEFS = {};
+        META = await api("/api/meta");
+        updateDatasetBanner(res.dataset);
+        fill($("ov-week"), META.test_weeks);
+        fill($("week"), META.test_weeks);
+        fill($("eweek"), META.test_weeks);
+        $("ov-week").value = META.test_weeks[META.test_weeks.length - 1];
+        $("week").value = $("ov-week").value;
+        $("eweek").value = $("ov-week").value;
+        await showOverview();
+        alert("Restored original default dataset!");
+      } catch (err) {
+        alert("Reset failed: " + err.message);
+      }
+    });
+  }
+
+  setupIngest();
 
   // Try form submission
   $("tryform").addEventListener("submit", async (ev) => {
