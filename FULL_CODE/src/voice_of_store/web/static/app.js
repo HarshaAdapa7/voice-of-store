@@ -551,7 +551,10 @@ async function showBrief() {
   const storeSel = $("brief-store");
   const selectedStore = storeSel ? storeSel.value : "ALL";
 
-  $("print").href = "/brief?region=" + encodeURIComponent(region) + "&week=" + encodeURIComponent(week);
+  const printEl = $("brief-print") || $("print");
+  if (printEl) {
+    printEl.href = "/brief?region=" + encodeURIComponent(region) + "&week=" + encodeURIComponent(week);
+  }
   const d = await api("/api/brief?region=" + encodeURIComponent(region) + "&week=" + encodeURIComponent(week));
   if (mine !== briefSeq) return;
 
@@ -885,7 +888,7 @@ async function showFlags() {
 
 async function prepareAlertBatch() {
   const week = $("eweek").value;
-  const box = $("alert-preview");
+  const box = $("alert-preview") || $("alert-delivery-status") || $("flags");
   const preview = await api("/api/alerts/preview?week=" + encodeURIComponent(week));
   if (!preview.enabled) {
     box.replaceChildren(
@@ -967,7 +970,8 @@ async function showStore() {
     );
   });
 
-  $("storeview").replaceChildren(
+  const storeBox = $("store-content") || $("storeview");
+  if (storeBox) storeBox.replaceChildren(
     el("div", { class: "kpi-row" },
       renderKpi("Store Profile", o.name, o.region + " Region \u00b7 ID: " + o.store_id, "teal"),
       renderKpi("Actionable Reports", o.reports_this_week, "Reports logged this week", "teal"),
@@ -1003,7 +1007,7 @@ async function showQueue() {
   const sevFilter = $("q-sev").value;
   const tierFilter = $("q-tier").value;
 
-  const container = $("queue-container");
+  const container = $("queue-content") || $("queue-container");
   let items = [];
 
   if (region === "ALL") {
@@ -1117,7 +1121,7 @@ async function showQueue() {
       $("q-tier").value = "ALL";
       showQueue().catch(showErr);
     });
-    container.replaceChildren(emptyCard);
+    if (container) container.replaceChildren(emptyCard);
     return;
   }
 
@@ -1154,7 +1158,7 @@ async function showQueue() {
     )
   );
 
-  container.replaceChildren(table);
+  if (container) container.replaceChildren(table);
 }
 
 async function showPrecision() {
