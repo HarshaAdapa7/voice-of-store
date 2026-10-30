@@ -78,29 +78,27 @@ class AlertDelivery:
     def prepare(self, week: str, flags: list[dict]) -> dict:
         if not _WEEK.fullmatch(week):
             raise AlertDeliveryError("Invalid alert week")
-        keys = sorted(
-            (str(flag.get("store_id", "")), str(flag.get("issue_type", "")), str(flag.get("confidence", "")))
+        items = [
+            {
+                "store": str(flag.get("store", "")),
+                "region": str(flag.get("region", "")),
+                "issue": str(flag.get("issue", "")),
+                "owner": str(flag.get("owner", "")),
+                "confidence": float(flag.get("confidence", 0.0)),
+                "change": str(flag.get("change", {}).get("summary", "")),
+                "next_step": str(flag.get("next_step", "")),
+            }
             for flag in flags
-        )
-        batch_id = hashlib.sha256((week + "\n" + json.dumps(keys, separators=(",", ":"))).encode()).hexdigest()
+        ]
+        canonical = json.dumps({"week": week, "items": items}, sort_keys=True, separators=(",", ":"))
+        batch_id = hashlib.sha256(canonical.encode()).hexdigest()
         return {
             "week": week,
             "batch_id": batch_id,
             "flag_count": len(flags),
             "recipients": list(self.settings.recipients),
             "enabled": self.settings.enabled,
-            "items": [
-                {
-                    "store": str(flag.get("store", "")),
-                    "region": str(flag.get("region", "")),
-                    "issue": str(flag.get("issue", "")),
-                    "owner": str(flag.get("owner", "")),
-                    "confidence": float(flag.get("confidence", 0.0)),
-                    "change": str(flag.get("change", {}).get("summary", "")),
-                    "next_step": str(flag.get("next_step", "")),
-                }
-                for flag in flags
-            ],
+            "items": items,
         }
 
     def _audit(self, batch_id: str) -> set[str]:

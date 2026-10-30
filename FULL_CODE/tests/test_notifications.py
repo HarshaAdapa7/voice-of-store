@@ -100,6 +100,9 @@ def test_send_uses_tls_audits_and_blocks_duplicate_batch(tmp_path):
 def test_changed_batch_and_missing_smtp_configuration_are_refused(tmp_path):
     delivery = AlertDelivery(_settings(tmp_path / "audit.jsonl"), smtp_factory=FakeSMTP)
     prepared = delivery.prepare("2026-09-21", _flags())
+    changed_flags = _flags()
+    changed_flags[0]["change"]["summary"] = "A different reviewed change"
+    assert delivery.prepare("2026-09-21", changed_flags)["batch_id"] != prepared["batch_id"]
     with pytest.raises(AlertDeliveryError, match="changed"):
         delivery.send("2026-09-21", [], prepared["batch_id"], approved=True, approved_by="ops")
 
