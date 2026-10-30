@@ -7,6 +7,7 @@
     python FULL_CODE/main.py detect --feedback F --as-of YYYY-MM-DD --out O    # one week of the detector
     python FULL_CODE/main.py check          # package and rules check before zipping
     python FULL_CODE/main.py grid           # synthetic-incident sanity harness
+    python FULL_CODE/main.py db             # Supabase database status, schema and sync
 
 Each command accepts --help. The detector stays a separate script because submission/detector_cmd.txt calls it directly.
 """
@@ -25,6 +26,7 @@ COMMANDS = {
     "detect": HERE / "detect.py",
     "check": HERE / "scripts" / "package_check.py",
     "grid": HERE / "scripts" / "injection_grid.py",
+    "db": HERE / "scripts" / "supabase_sync.py",
 }
 
 
