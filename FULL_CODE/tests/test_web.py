@@ -425,6 +425,9 @@ def test_gemini_assistant_mode_is_optional(monkeypatch):
     class FakeGemini:
         enabled = True
 
+        def __init__(self, *args, **kwargs):
+            pass
+
         def summarize(self, result, store_names):
             captured["result"] = result.copy()
             captured["store_names"] = store_names
@@ -439,6 +442,14 @@ def test_gemini_assistant_mode_is_optional(monkeypatch):
     assert response.status_code == 200 and response.get_json()["llm_summary"] == "Model summary"
     assert "RAW QUESTION" not in repr(captured["result"])
     assert "message" not in captured["result"]
+
+    # Client-supplied header activates Gemini even when not configured on server
+    res_hdr = c.post(
+        "/api/assistant",
+        json={"message": "hello", "mode": "gemini"},
+        headers={"X-Gemini-API-Key": "header-key"},
+    )
+    assert res_hdr.status_code == 200 and res_hdr.get_json()["llm_summary"] == "Model summary"
 
 
 def test_assistant_has_its_own_rate_limit():

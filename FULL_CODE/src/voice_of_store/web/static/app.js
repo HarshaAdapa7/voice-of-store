@@ -1336,7 +1336,7 @@ async function ask(message) {
   wait.setAttribute("aria-busy", "true");
   try {
     const headers = { "Content-Type": "application/json" };
-    const customKey = sessionStorage.getItem("gemini_api_key");
+    const customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key");
     if (customKey) {
       headers["X-Gemini-API-Key"] = customKey;
     }
@@ -1364,7 +1364,14 @@ async function ask(message) {
     }
   } catch (e) {
     wait.remove();
-    say("bot", "Unable to complete request: " + e.message + ". Please try asking about a specific store or region.");
+    const is503 = e.message && e.message.includes("503");
+    const is502 = e.message && e.message.includes("502");
+    let errNote = is503
+      ? "Gemini API mode is not configured on this server instance. If running in VS Code, please restart your server (Ctrl+C then re-run) to load the latest code, or check your API key."
+      : is502
+      ? "Google Gemini API was reached but returned an error (verify your API key and network connection). Local mode remains fully operational."
+      : "Unable to complete request: " + e.message + ". Please try asking in Local mode or about a store/region.";
+    say("bot", errNote);
   }
 }
 
@@ -1374,7 +1381,7 @@ function setupAsk(suggestions) {
   const keyBtn = $("btn-gemini-key");
 
   function refreshGeminiOption() {
-    const customKey = sessionStorage.getItem("gemini_api_key");
+    const customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key");
     const serverConfigured = META.assistant_modes && META.assistant_modes.gemini;
     if (customKey || serverConfigured) {
       geminiOption.disabled = false;
@@ -1401,9 +1408,11 @@ function setupAsk(suggestions) {
         const trimmed = val.trim();
         if (trimmed) {
           sessionStorage.setItem("gemini_api_key", trimmed);
+          localStorage.setItem("gemini_api_key", trimmed);
           modeSelect.value = "gemini";
         } else {
           sessionStorage.removeItem("gemini_api_key");
+          localStorage.removeItem("gemini_api_key");
           modeSelect.value = "local";
         }
         refreshGeminiOption();
@@ -1413,7 +1422,7 @@ function setupAsk(suggestions) {
 
   modeSelect.addEventListener("change", () => {
     if (modeSelect.value === "gemini") {
-      const customKey = sessionStorage.getItem("gemini_api_key");
+      const customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key");
       const serverConfigured = META.assistant_modes && META.assistant_modes.gemini;
       if (!customKey && !serverConfigured && keyBtn) {
         keyBtn.click();
