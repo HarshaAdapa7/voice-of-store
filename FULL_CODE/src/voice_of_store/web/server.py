@@ -205,7 +205,7 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, 
             abort(400)
         result = assistant.ask(message)
         if mode == "gemini":
-            custom_key = request.headers.get("X-Gemini-API-Key", "").strip()
+            custom_key = request.headers.get("X-Gemini-API-Key", "").strip().strip("'\"")
             active_gemini = GeminiAssistant(api_key=custom_key) if custom_key else gemini
             if not active_gemini.enabled:
                 return jsonify(error="Gemini mode is not configured"), 503
