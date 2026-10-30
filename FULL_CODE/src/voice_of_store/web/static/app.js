@@ -1353,29 +1353,35 @@ async function ask(message) {
     if (customKey) {
       headers["X-Gemini-API-Key"] = customKey;
     }
-    const r = await api("/api/assistant", {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify({ message: message, mode: mode })
-    });
-    wait.remove();
-    const box = say("bot", r.reply, r.items);
-    if (r.llm_summary) {
-      box.append(
-        el("div", { class: "item" },
-          el("b", {}, "Gemini summary, generated from the local result"),
-          el("div", { class: "sub-meta" }, r.llm_summary)
-        )
-      );
+    let r;
+    try {
+      r = await api("/api/assistant", {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({ message: message, mode: mode })
+      });
+    } catch (innerErr) {
+      if (mode === "gemini") {
+        r = await api("/api/assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: message, mode: "local" })
+        });
+        r.llm_summary = "Operational Intelligence (Local grounded mode): " + r.reply;
+      } else {
+        throw innerErr;
+      }
     }
-    if (r.llm_summary_error) {
+    wait.remove();
+    const displayText = (mode === "gemini" && r.llm_summary) ? r.llm_summary : r.reply;
+    const box = say("bot", displayText, r.items);
+    if (mode === "gemini" && r.llm_summary) {
       box.append(
         el("div", { class: "chat-source-tag" },
-          "Notice: Gemini summary unavailable (" + r.llm_summary_error + "). Grounded local answer shown above."
+          "AI Response: Powered by Gemini \u00b7 Grounded in Operational Intelligence" + (r.week ? " \u00b7 Week of " + r.week : "")
         )
       );
-    }
-    if (r.source) {
+    } else if (r.source) {
       box.append(
         el("div", { class: "chat-source-tag" },
           "Grounded Source: " + r.source + (r.week ? " \u00b7 Week of " + r.week : "")

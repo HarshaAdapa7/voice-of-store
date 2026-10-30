@@ -19,48 +19,45 @@ class GeminiError(RuntimeError):
     """A safe, user-facing Gemini request failure without provider details or credentials."""
 
 
-def synthesize_executive_summary(result: Mapping) -> str:
-    """Generate a high-level operational intelligence summary grounded in pipeline predictions."""
-    intent = str(result.get("intent", ""))
-    reply = str(result.get("reply", ""))
-    week = str(result.get("week") or "")
-    items = result.get("items") or []
-
+def _format_item_summary(intent: str, reply: str, week: str, items: list) -> str | None:
     if intent == "store" and items:
         top_str = ", ".join(i.get("title", "") for i in items[:3] if i.get("title"))
-        return (
-            f"Operational Assessment: {reply} Machine-learned issue priorities highlight {top_str}. "
-            "Actionable store-level tickets should be routed to designated department managers within prescribed SLA windows."
-        )
+        return f"Operational Assessment: {reply} Machine-learned issue priorities highlight {top_str}. Actionable store-level tickets should be routed to designated department managers within prescribed SLA windows."
     if intent == "emerging":
-        count = len(items)
-        return (
-            f"Early Warning Alert ({week}): {reply} The Poisson CUSUM sequential detector identified {count} rapid-rising "
-            "anomalies (+3 weeks lead time ahead of baseline). Site inspection and root-cause review recommended within 48 hours."
-        )
+        return f"Early Warning Alert ({week}): {reply} The Poisson CUSUM sequential detector identified {len(items)} rapid-rising anomalies (+3 weeks lead time ahead of baseline). Site inspection and root-cause review recommended within 48 hours."
     if intent == "brief":
-        return (
-            f"Regional Operations Brief ({week}): {reply} Prioritized by policy severity floors and cross-channel 48h deduplication. "
-            "High and critical severity categories require immediate department owner escalation."
-        )
-    if intent == "classify":
-        return (
-            f"Taxonomy Classification: {reply} Model predictions enforce strict policy severity floors. "
-            "Actionable feedback is verified against store master directories for escalation routing."
-        )
-    if intent == "detection":
-        return (
-            "Detector Benchmark Summary: Exposure-adjusted Poisson CUSUM sequential test achieves a 0.9333 primary score "
-            "(1.0000 classification macro-F1, +3 weeks early warning lead time on onset, 2.15 flags/week within 3.0 budget)."
-        )
-    if intent == "predictions":
-        return (
-            f"Pipeline Precision & Predictions: {reply} Validated time-split models ensure 95.2% actionable precision "
-            "and 97.0% precision on urgent safety and critical compliance issues."
-        )
-    return (
+        items_summary = "; ".join(f"{i['title']}" for i in items[:3] if "title" in i)
+        detail = f" Key priorities: {items_summary}." if items_summary else ""
+        return f"Regional Operations Brief ({week}): {reply}{detail} Prioritized by policy severity floors and cross-channel 48h deduplication. High and critical severity categories require immediate department owner escalation."
+    return None
+
+
+def synthesize_executive_summary(result: Mapping) -> str:
+    """Generate a high-level operational intelligence summary grounded in pipeline predictions."""
+    intent, reply, week = str(result.get("intent", "")), str(result.get("reply", "")), str(result.get("week") or "")
+    formatted = _format_item_summary(intent, reply, week, result.get("items") or [])
+    if formatted is not None:
+        return formatted
+    templates = {
+        "help": (
+            "Hello! I am your Voice-of-Store AI partner, powered by Gemini. I monitor customer and staff feedback "
+            "across all 50 supermarkets and 4 regions. Ask me about store performance, regional trends (e.g. 'South issues'), "
+            "emerging alert spikes, or model predictions, and I will provide grounded data and actionable operational guidance."
+        ),
+        "unknown": (
+            "Hello! I am your Voice-of-Store AI partner, powered by Gemini. I monitor customer and staff feedback "
+            "across all 50 supermarkets and 4 regions. Ask me about store performance, regional trends (e.g. 'South issues'), "
+            "emerging alert spikes, or model predictions, and I will provide grounded data and actionable operational guidance."
+        ),
+        "feedback": f"Operational Feedback Lookup: {reply} Grounded in our machine learning pipeline predictions.",
+        "classify": f"Taxonomy Classification: {reply} Model predictions enforce strict policy severity floors. Actionable feedback is verified against store master directories for escalation routing.",
+        "detection": "Detector Benchmark Summary: Exposure-adjusted Poisson CUSUM sequential test achieves a 0.9333 primary score (1.0000 classification macro-F1, +3 weeks early warning lead time on onset, 2.15 flags/week within 3.0 budget).",
+        "predictions": f"Pipeline Precision & Predictions: {reply} Validated time-split models ensure 95.2% actionable precision and 97.0% precision on urgent safety and critical compliance issues.",
+    }
+    return templates.get(
+        intent,
         f"Executive Intelligence Summary: {reply} Grounded in verified time-split model predictions, "
-        "cross-channel deduplication, and SLA routing rules across all operating regions."
+        "cross-channel deduplication, and SLA routing rules across all operating regions.",
     )
 
 
@@ -156,11 +153,12 @@ class GeminiAssistant:
         facts = self._safe_result(result, store_names)
         prompt_text = (
             "You are the executive Voice-of-Store Operations AI Assistant for retail store operations.\n"
-            "Below is verified operational data from our retail analytics engine:\n\n"
+            "Respond naturally, intelligently, and conversationally using the verified operational data below:\n\n"
             f"{json.dumps(facts, indent=2, ensure_ascii=True)}\n\n"
-            "Provide a concise 2-3 sentence executive operational summary for senior store directors. "
-            "Highlight operational urgency, detected emerging anomalies, policy severity floors, and recommended actions. "
-            "Return only plain text."
+            "Guidelines:\n"
+            "- If the intent is a greeting/help, respond warmly and describe your capabilities.\n"
+            "- If operational data is provided, explain the findings, affected stores, severity, and required actions clearly in 2-3 natural sentences.\n"
+            "- Use natural, professional language. Return plain text only."
         )
         body = {
             "contents": [

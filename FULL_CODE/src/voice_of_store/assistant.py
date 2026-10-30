@@ -108,23 +108,28 @@ class Assistant:
         return best if best_score >= 2 and not tie else None
 
     # ---- answering ----------------------------------------------------------------------------------------------------
+    def _special_query(self, message: str, q: str) -> dict | None:
+        has_reg = any(r.lower() in q for r in self.ctx.regions)
+        if re.search(r"\bclassify\s*(?:this)?\s*(?:comment|feedback|text)?\s*:", message, re.I):
+            text_part = re.sub(r"^.*?\bclassify\s*(?:this)?\s*(?:comment|feedback|text)?\s*:\s*", "", message, flags=re.I).strip()
+            return self._classify(text_part)
+        if q.startswith("classify ") and not (has_reg or re.search(r"\b(issues?|brief|problems?)\b", q)):
+            return self._classify(clean_input(message, MAX_QUESTION_CHARS)[9:].strip(" :"))
+        fb_match = re.search(r"\b(FB-[A-Z0-9]{6,12})\b", message, re.I)
+        return self._feedback_lookup(fb_match.group(1).upper()) if fb_match else None
+
     def ask(self, message: str) -> dict:
         """Answer one question; always returns intent, reply, items, week, source and suggestions, never raises on odd input."""
         q = clean_input(message, MAX_QUESTION_CHARS).lower()
         if not q:
-            return _reply("help", "Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule.")
-        if q.startswith("classify:") or q.startswith("classify "):
-            return self._classify(clean_input(message, MAX_QUESTION_CHARS)[9:].strip(" :"))
-        classify_match = re.search(r"\bclassify(?:\s+this)?(?:\s+comment)?[:\s]+(.+)", message, re.I)
-        if classify_match:
-            return self._classify(classify_match.group(1).strip())
-        fb_match = re.search(r"\b(FB-[A-Z0-9]{6,12})\b", message, re.I)
-        if fb_match:
-            return self._feedback_lookup(fb_match.group(1).upper())
+            return self._help()
+        special = self._special_query(message, q)
+        if special is not None:
+            return special
         stores = self.ctx.store_ids_in_text(q)
         week, region, issue = self._week(q), self._region(q), self._issue(q)
         rules = (
-            (r"\b(help|hello|hi|hey|what can you do)\b", lambda: self._help()),
+            (r"\b(help|hello|hi|hey|hlo|hlw|helo|hiya|howdy|good\s*(?:morning|afternoon|evening)|who are you|what can you do|greetings)\b", lambda: self._help()),
             (r"\bqueue\b|triage|unresolved", lambda: self._queue(week, region)),
             (r"predict|forecast|model output|fine tune|validation score|f1 score", lambda: self._predictions_summary(week)),
             (r"escalat|\brule\b|how urgent|\bsla\b|how fast", lambda: self._escalation(issue)),
@@ -150,15 +155,17 @@ class Assistant:
             return self._brief(week, region)
         return _reply(
             "unknown",
-            "I can't tell what you are asking from that. I answer from the weekly briefs: try one of the questions below. "
+            "I can't tell what you are asking from that. I answer from the weekly briefs: try asking about a store "
+            "(e.g. 'How is Kothrud doing?'), a region ('South issues'), emerging alerts, or model predictions. "
             "To classify a comment, start with 'classify:'.",
         )
 
     def _help(self) -> dict:
         return _reply(
             "help",
-            "I can show a store's status, a region's top issues, emerging-issue flags, who owns an issue type, the escalation "
-            "rule and how accurate the numbers are. I answer from the weekly briefs only and cite the week.",
+            "Hello! I am your Voice-of-Store Operations Assistant. I monitor real-time operational intelligence across our 50 supermarkets. "
+            "Ask me about a region's top issues (e.g. 'South issues'), store performance ('How is Kothrud doing?'), "
+            "emerging alerts, who owns an issue, or classify a customer comment with 'classify: <text>'.",
         )
 
     def _dedup(self, week: str) -> dict:
@@ -192,15 +199,8 @@ class Assistant:
 
     def _safety(self) -> dict:
         """Explain policy severity floors and high-severity issue types."""
-        text = (
-            "Safety, allergen, contamination, hygiene, and employee misconduct issues are governed by strict operational "
-            "policy floors. By policy, they are never downgraded below high severity regardless of low feedback volume."
-        )
-        lines = [
-            "IT17/IT18: Foreign object / allergen · Critical floor · Immediate investigation",
-            "IT10: Refrigeration / cold-chain failure · High floor · Same day action",
-            "IT08/IT06/IT04: Safety hazard, pest/hygiene, misconduct · High floor · 24-hour action",
-        ]
+        text = "Safety, allergen, contamination, hygiene, and employee misconduct issues are governed by strict operational policy floors (never downgraded below high severity)."
+        lines = ["IT17/IT18: Foreign object / allergen · Critical floor", "IT10: Refrigeration failure · High floor", "IT08/IT06/IT04: Hazard, pest, misconduct · High floor"]
         return _reply("safety", text, [dict(title="Policy Severity Floors", lines=lines)], source="policy severity floors")
 
     def _channels(self) -> dict:
