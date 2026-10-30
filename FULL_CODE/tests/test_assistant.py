@@ -266,3 +266,9 @@ def test_rising_issue_filter_and_natural_classify(bot):
     assert r_rise["intent"] == "emerging" and "Refrigeration" in r_rise["reply"]
     r_class = a.ask("can you classify comment: freezer is leaking water on the floor")
     assert r_class["intent"] == "classify" and r_class["items"]
+    r_reg = a.ask("which regions do we cover?")
+    assert r_reg["intent"] == "regions" and len(r_reg["items"]) == len(a.ctx.regions)
+    r_pipe = a.ask("how does the pipeline work?")
+    assert r_pipe["intent"] == "pipeline" and len(r_pipe["items"]) == 5
+    r_q = a.ask("what is in the escalation queue?")
+    assert r_q["intent"] == "queue" and "triage" in r_q["reply"]

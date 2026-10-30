@@ -6,7 +6,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Mapping
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -30,7 +30,7 @@ class GeminiAssistant:
         timeout: float = 12.0,
     ):
         self._api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "")
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
         self._opener = opener
         self.timeout = timeout
 
@@ -67,6 +67,40 @@ class GeminiAssistant:
         safe["items"] = safe_items
         return safe
 
+    def _call_model(self, model: str, body: dict) -> str | None:
+        """Call one Gemini model; return text or None on 404 (model not found)."""
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{quote(model, safe='')}:generateContent"
+        )
+        request = Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-goog-api-key": self._api_key},
+            method="POST",
+        )
+        try:
+            with self._opener(request, timeout=self.timeout) as response:
+                payload = json.loads(response.read())
+            candidates = payload.get("candidates") or []
+            if not candidates:
+                return None
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text = "".join(p.get("text", "") for p in parts if isinstance(p.get("text"), str)).strip()
+            return text if text else None
+        except HTTPError as exc:
+            if exc.code == 404:
+                return None
+            if exc.code in (400, 401, 403):
+                raise GeminiError("Gemini API key is invalid or lacks permission") from exc
+            if exc.code == 429:
+                raise GeminiError("Gemini API rate limit or quota exceeded") from exc
+            raise GeminiError("Gemini summary is unavailable") from exc
+        except (URLError, TimeoutError, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise GeminiError("Gemini summary is unavailable") from exc
+        except Exception as exc:
+            raise GeminiError("Gemini summary is unavailable") from exc
+
     def summarize(self, result: Mapping, store_names: tuple[str, ...] = ()) -> str:
         """Summarize local facts. The caller's question and raw feedback are never accepted by this API."""
         if not self.enabled:
@@ -87,28 +121,21 @@ class GeminiAssistant:
             },
             "contents": [{"parts": [{"text": json.dumps(facts, ensure_ascii=True)}]}],
         }
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{quote(self.model, safe='')}:generateContent"
-        )
-        request = Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-goog-api-key": self._api_key},
-            method="POST",
-        )
-        try:
-            with self._opener(request, timeout=self.timeout) as response:
-                payload = json.loads(response.read())
-            text = "".join(
-                part.get("text", "")
-                for part in payload["candidates"][0]["content"]["parts"]
-                if isinstance(part.get("text"), str)
-            ).strip()
-        except (URLError, TimeoutError, OSError, ValueError, KeyError, IndexError, TypeError) as exc:
-            raise GeminiError("Gemini summary is unavailable") from exc
-        except Exception as exc:
-            raise GeminiError("Gemini summary is unavailable") from exc
-        if not text:
-            raise GeminiError("Gemini returned an empty summary")
-        return text[:MAX_OUTPUT_CHARS]
+        models = [self.model]
+        for fallback in ("gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"):
+            if fallback not in models:
+                models.append(fallback)
+
+        last_error = None
+        for m in models:
+            try:
+                text = self._call_model(m, body)
+                if text:
+                    return text[:MAX_OUTPUT_CHARS]
+            except GeminiError as exc:
+                last_error = exc
+                if "invalid or lacks permission" in str(exc):
+                    raise
+        if last_error:
+            raise last_error
+        raise GeminiError("Gemini returned an empty summary")

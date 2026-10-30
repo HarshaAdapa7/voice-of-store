@@ -211,8 +211,8 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, 
                 return jsonify(error="Gemini mode is not configured"), 503
             try:
                 result["llm_summary"] = active_gemini.summarize(result, tuple(getattr(state, "store_name", {}).values()))
-            except GeminiError:
-                return jsonify(error="Gemini summary is unavailable"), 502
+            except GeminiError as exc:
+                result["llm_summary_error"] = str(exc)
         return jsonify(result)
 
     @app.post("/api/classify")

@@ -1335,15 +1335,28 @@ async function ask(message) {
   const wait = say("bot", "Analyzing Voice-of-Store operational intelligence\u2026");
   wait.setAttribute("aria-busy", "true");
   try {
+    let mode = $("assistant-mode").value;
+    let customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key");
+    const serverConfigured = META && META.assistant_modes && META.assistant_modes.gemini;
+    if (mode === "gemini" && !customKey && !serverConfigured) {
+      const val = prompt("Enter Google Gemini API Key (starts with AIzaSy...):");
+      if (val && val.trim()) {
+        customKey = val.trim();
+        sessionStorage.setItem("gemini_api_key", customKey);
+        localStorage.setItem("gemini_api_key", customKey);
+      } else {
+        mode = "local";
+        $("assistant-mode").value = "local";
+      }
+    }
     const headers = { "Content-Type": "application/json" };
-    const customKey = sessionStorage.getItem("gemini_api_key") || localStorage.getItem("gemini_api_key");
     if (customKey) {
       headers["X-Gemini-API-Key"] = customKey;
     }
     const r = await api("/api/assistant", {
       method: "POST",
       headers: headers,
-      body: JSON.stringify({ message: message, mode: $("assistant-mode").value })
+      body: JSON.stringify({ message: message, mode: mode })
     });
     wait.remove();
     const box = say("bot", r.reply, r.items);
@@ -1352,6 +1365,13 @@ async function ask(message) {
         el("div", { class: "item" },
           el("b", {}, "Gemini summary, generated from the local result"),
           el("div", { class: "sub-meta" }, r.llm_summary)
+        )
+      );
+    }
+    if (r.llm_summary_error) {
+      box.append(
+        el("div", { class: "chat-source-tag" },
+          "Notice: Gemini summary unavailable (" + r.llm_summary_error + "). Grounded local answer shown above."
         )
       );
     }

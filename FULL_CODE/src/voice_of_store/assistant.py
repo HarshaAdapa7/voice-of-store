@@ -132,6 +132,7 @@ class Assistant:
         week, region, issue = self._week(q), self._region(q), self._issue(q)
         rules = (
             (r"\b(help|hello|hi|hey|what can you do)\b", lambda: self._help()),
+            (r"\bqueue\b|triage|unresolved", lambda: self._queue(week, region)),
             (r"escalat|\brule\b|how urgent|\bsla\b|how fast", lambda: self._escalation(issue)),
             (r"accura|precision|reliab|trust|how good", lambda: self._accuracy()),
             (r"\bwho\b.*(handle|own|responsible|fix|deal)|\bowner\b|which team", lambda: self._owner(issue)),
@@ -140,6 +141,8 @@ class Assistant:
             (r"safety|hazard|policy floor|hygiene|pest|misconduct|allergen", lambda: self._safety()),
             (r"actionab|storeless", lambda: self._actionability()),
             (r"\bchannels?\b|intake|where.*feedback", lambda: self._channels()),
+            (r"pipeline|architecture|how (?:it works|does it work)", lambda: self._pipeline()),
+            (r"which regions|what regions|list regions", lambda: self._regions()),
             (r"emerging|rising|\bflag|\balert|spike", lambda: self._emerging(week, region, stores, issue)),
         )
         for pattern, handler in rules:
@@ -254,6 +257,51 @@ class Assistant:
             )
         ]
         return _reply("actionability", text, items, source="actionability policy")
+
+    def _regions(self) -> dict:
+        """List monitored operating regions and retail scope."""
+        text = f"The Voice-of-Store engine monitors 4 operating regions: {', '.join(self.ctx.regions)}."
+        items = [
+            dict(
+                title=f"{r} Region",
+                lines=["Monitored with weekly briefs, Poisson CUSUM emerging flags, and regional management routing."],
+            )
+            for r in self.ctx.regions
+        ]
+        return _reply("regions", text, items, source="store network directory")
+
+    def _pipeline(self) -> dict:
+        """Explain the end-to-end Voice-of-Store architecture and processing stages."""
+        text = (
+            "The Voice-of-Store engine processes unverified feedback in 5 automated stages: "
+            "(1) Cross-channel intake, (2) Taxonomy classification with policy floors, "
+            "(3) 48h deduplication, (4) Poisson CUSUM sequential change-point detection, "
+            "and (5) SLA escalation routing."
+        )
+        items = [
+            dict(title="Stage 1: Intake", lines=["Shift notes, in-app feedback, reviews, and call tickets."]),
+            dict(title="Stage 2: Taxonomy", lines=["29 operational issue categories with mandatory safety policy floors."]),
+            dict(title="Stage 3: Deduplication", lines=["48-hour rolling clustering across stores and channels."]),
+            dict(title="Stage 4: CUSUM Detector", lines=["Sequential change-point test (+3 wk early lead time, 0.9333 score)."]),
+            dict(title="Stage 5: Escalation Queue", lines=["SLA routing with strict resolution windows."]),
+        ]
+        return _reply("pipeline", text, items, source="engine architecture")
+
+    def _queue(self, week: str, region: str | None) -> dict:
+        """Summarize current escalation triage queue items."""
+        flags = self._filter_flags(self.ctx.flags_for(week), [], region, None)
+        text = (
+            f"Escalation triage queue for week of {week} ({region or 'all regions'}): "
+            f"{len(flags)} emerging alert(s) requiring active review."
+        )
+        items = [
+            dict(
+                title=f"Flag: {f['issue']} at {f['store']}",
+                lines=[f"Severity: High/Critical · Owner: {f['owner']} · Action: Review within 48h · {f.get('next_step', 'Inspect site')}"],
+            )
+            for f in flags[:6]
+        ]
+        return _reply("queue", text, items, week, source="escalation queue")
 
     def _issue_overview(self, issue: dict, week: str, region: str | None) -> dict:
         """Status and ownership details for a single issue type."""

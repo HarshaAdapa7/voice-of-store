@@ -87,9 +87,9 @@ def static_checks() -> list[Check]:
     out.append(Check("Quality", f"functions at most {MAX_FUNC_LINES} lines", 4, not long_fn, ", ".join(long_fn[:6])))
     out.append(Check("Quality", f"cyclomatic complexity at most {MAX_COMPLEXITY}", 4, not hard_fn, ", ".join(hard_fn[:6])))
     big = [
-        f"{p.name}({len(p.read_text().splitlines())})"
+        f"{p.name}({len(p.read_text(encoding='utf-8').splitlines())})"
         for p in py_files("src")
-        if len(p.read_text().splitlines()) > MAX_MODULE_LINES
+        if len(p.read_text(encoding='utf-8').splitlines()) > MAX_MODULE_LINES
     ]
     out.append(Check("Quality", f"modules at most {MAX_MODULE_LINES} lines", 2, not big, ", ".join(big)))
     out.append(

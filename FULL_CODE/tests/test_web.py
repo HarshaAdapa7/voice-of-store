@@ -451,6 +451,27 @@ def test_gemini_assistant_mode_is_optional(monkeypatch):
     )
     assert res_hdr.status_code == 200 and res_hdr.get_json()["llm_summary"] == "Model summary"
 
+    # Graceful degradation: returns local deterministic answer on provider error
+    class FailingGemini:
+        enabled = True
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def summarize(self, result, store_names):
+            from voice_of_store.gemini import GeminiError
+            raise GeminiError("Gemini summary is unavailable")
+
+    monkeypatch.setattr(server, "GeminiAssistant", FailingGemini)
+    res_fail = c.post(
+        "/api/assistant",
+        json={"message": "hello", "mode": "gemini"},
+        headers={"X-Gemini-API-Key": "header-key"},
+    )
+    assert res_fail.status_code == 200
+    assert "llm_summary_error" in res_fail.get_json()
+    assert res_fail.get_json()["intent"] == "help"
+
 
 def test_assistant_has_its_own_rate_limit():
     c = make(assistant_per_minute=3, classify_per_minute=100, rate_per_minute=100)
