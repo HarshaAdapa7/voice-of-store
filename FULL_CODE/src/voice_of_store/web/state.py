@@ -53,6 +53,13 @@ class AppState:
         self._submission_dir = Path(submission_dir)
         self._data_dir = Path(data_dir)
         self._report: dict | None = None
+        self._default_data = self.data
+        self._default_rows = self.rows
+        self._default_flags = self.flags
+        self._default_weeks = list(self.weeks)
+        self._default_test_weeks = list(self.test_weeks)
+        self.is_custom = False
+        self.custom_name = ""
 
     def _index_rows(self) -> None:
         """Build the lookups once so each request is a dictionary read, not a scan of 40,000 rows."""
@@ -99,6 +106,7 @@ class AppState:
             ],
             channels=sorted(self.data.feedback["channel"].unique()),
             stores=[dict(id=s, name=n, region=self.store_region[s]) for s, n in self.store_name.items()],
+            dataset=self.dataset_info(),
         )
 
     def brief(self, region: str, week: str) -> list[dict]:
@@ -331,3 +339,85 @@ class AppState:
     def report_html(self) -> str:
         """The evaluation report page."""
         return render_report(self.report())
+
+    def dataset_info(self) -> dict:
+        fb = self.data.feedback
+        min_date = str(fb["created_at"].min()) if not fb.empty else ""
+        max_date = str(fb["created_at"].max()) if not fb.empty else ""
+        return {
+            "is_custom": self.is_custom,
+            "name": self.custom_name if self.is_custom else "Default (Original Pack)",
+            "row_count": len(fb),
+            "date_min": min_date[:10] if min_date else "",
+            "date_max": max_date[:10] if max_date else "",
+            "stores_active": int(self.rows["store"].dropna().nunique()) if "store" in self.rows.columns else 0,
+            "weeks_count": len(self.weeks),
+        }
+
+    def load_custom_dataset(self, feedback_df: pd.DataFrame, name: str = "Uploaded Dataset") -> dict:
+        """Hot-swap the active dataset to the uploaded feedback records."""
+        with self._lock:
+            fb = feedback_df.copy()
+            fb["created_at"] = pd.to_datetime(fb["created_at"])
+            fb["feedback_id"] = fb["feedback_id"].astype(str)
+            fb["channel"] = fb["channel"].astype(str)
+            fb["store_id"] = fb["store_id"].astype(str)
+            fb["text"] = fb["text"].astype(str)
+
+            from ..io import week_start_of
+
+            fb_weeks = sorted(week_start_of(fb["created_at"]).unique())
+            if not fb_weeks:
+                raise ValueError("Uploaded dataset has no valid dates.")
+
+            cal_rows = [{"week_index": i, "week_start": w, "labelled_period": "test"} for i, w in enumerate(fb_weeks, 1)]
+            cal_df = pd.DataFrame(cal_rows)
+
+            custom_data = Data(
+                feedback=fb,
+                labels=self._default_data.labels,
+                stores=self._default_data.stores,
+                taxonomy=self._default_data.taxonomy,
+                calendar=cal_df,
+            )
+
+            end = fb["created_at"].max() + pd.Timedelta(seconds=1)
+            new_rows = prepare_rows(custom_data, end, self.resolver, clf=self.clf)
+
+            from ..pipeline import emit_flags
+
+            try:
+                new_flags = emit_flags(new_rows, custom_data, self.resolver, fb_weeks)
+            except Exception:
+                new_flags = pd.DataFrame(columns=C.FLAG_COLS)
+
+            if "confidence" in new_flags.columns and not new_flags.empty:
+                new_flags["confidence"] = new_flags["confidence"].astype(float)
+
+            self.data = custom_data
+            self.rows = new_rows
+            self.flags = new_flags
+            self.weeks = fb_weeks
+            self.test_weeks = fb_weeks
+            self.is_custom = True
+            self.custom_name = name
+            self._brief_cache.clear()
+            self._memos.clear()
+            self._index_rows()
+
+            return self.dataset_info()
+
+    def reset_to_default(self) -> dict:
+        """Restore the default original dataset."""
+        with self._lock:
+            self.data = self._default_data
+            self.rows = self._default_rows
+            self.flags = self._default_flags
+            self.weeks = list(self._default_weeks)
+            self.test_weeks = list(self._default_test_weeks)
+            self.is_custom = False
+            self.custom_name = ""
+            self._brief_cache.clear()
+            self._memos.clear()
+            self._index_rows()
+            return self.dataset_info()

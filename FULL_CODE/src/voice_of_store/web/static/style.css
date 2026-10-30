@@ -2010,3 +2010,118 @@ th.text-center, td.text-center {
   margin-top: 10px;
 }
 
+
+/* Dataset Active Banner */
+.dataset-banner {
+  background: #FFFBEB;
+  border-bottom: 1px solid #FDE68A;
+  padding: 10px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+.dataset-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dataset-pill {
+  background: #B45309;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+#dataset-banner-text {
+  font-size: 13px;
+  color: #92400E;
+  font-weight: 500;
+}
+
+/* Upload Dropzone */
+.upload-dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 40px 20px;
+  text-align: center;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.upload-dropzone:hover, .upload-dropzone.dragover {
+  border-color: var(--teal-primary);
+  background: var(--teal-soft);
+}
+.upload-dropzone svg {
+  color: var(--teal-primary);
+  margin-bottom: 12px;
+}
+.upload-dropzone h4 {
+  margin: 0 0 6px 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(15, 118, 110, 0.2);
+  border-radius: 50%;
+  border-top-color: var(--teal-primary);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+
+#ingest-file-input {
+  display: none !important;
+}
+#ingest-spinner[hidden] {
+  display: none !important;
+}
+#ingest-results-card[hidden] {
+  display: none !important;
+}
+#ingest-error[hidden] {
+  display: none !important;
+}
+
+/* Ingestion UI Components */
+.ingest-card { margin-bottom: 20px; }
+.ingest-controls-row { margin-top: 15px; display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+.ingest-date-col { flex: 1; min-width: 220px; }
+.ingest-date-input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.ingest-start-btn { padding: 9px 18px; cursor: pointer; }
+.ingest-spinner-wrap { text-align: center; margin: 25px 0; }
+.ingest-spinner-text { margin-top: 12px; color: var(--teal-primary); font-weight: 600; }
+.ingest-error-box { margin-top: 15px; }
+.ingest-results-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.ingest-header-actions { display: flex; gap: 10px; }
+.ingest-action-btn { padding: 8px 14px; display: flex; align-items: center; gap: 6px; }
+.ingest-stats-bar { display: flex; gap: 12px; margin-bottom: 15px; flex-wrap: wrap; }
+.badge-info-soft { background: var(--info-soft); color: var(--info-text); padding: 5px 10px; border-radius: 4px; font-weight: 600; }
+.badge-success-soft { background: var(--success-soft); color: var(--success-text); padding: 5px 10px; border-radius: 4px; font-weight: 600; }
+.badge-warning-soft { background: var(--warning-soft); color: var(--warning-text); padding: 5px 10px; border-radius: 4px; font-weight: 600; }
+.ingest-table-scroll { max-height: 480px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.ingest-preview-table { width: 100%; border-collapse: collapse; text-align: left; }
+.ingest-preview-thead { position: sticky; top: 0; background: var(--bg-surface); z-index: 2; }
+.ingest-preview-tr { border-bottom: 2px solid var(--border-color); }
+.th-exclude { padding: 10px; width: 60px; }
+.th-id { padding: 10px; width: 90px; }
+.th-src { padding: 10px; width: 100px; }
+.th-chan { padding: 10px; width: 120px; }
+.th-date { padding: 10px; width: 140px; }
+.th-store { padding: 10px; width: 160px; }
+.th-status { padding: 10px; width: 100px; }

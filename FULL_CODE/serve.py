@@ -54,7 +54,14 @@ def run_server(app, host: str, port: int) -> None:
         app.run(host=host, port=port, debug=False, threaded=True, request_handler=QuietHandler)
         return
     serve(
-        app, host=host, port=port, threads=4, max_request_body_size=16 * 1024, cleanup_interval=10, channel_timeout=30, ident=""
+        app,
+        host=host,
+        port=port,
+        threads=4,
+        max_request_body_size=16 * 1024 * 1024,
+        cleanup_interval=10,
+        channel_timeout=30,
+        ident="",
     )
 
 

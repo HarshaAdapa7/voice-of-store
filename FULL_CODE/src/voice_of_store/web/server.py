@@ -276,6 +276,105 @@ def _alert_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig,
         return jsonify(sent)
 
 
+def _format_ingested_records(validated_records: list) -> list[dict]:
+    """Convert validated record objects to serialized dictionaries."""
+    return [
+        {
+            "feedback_id": r.feedback_id,
+            "channel": r.channel,
+            "created_at": r.created_at,
+            "store_id": r.store_id,
+            "store_name": r.store_name,
+            "region": r.region,
+            "text": r.text,
+            "source_reference": r.source_reference,
+            "status": r.status,
+            "notes": r.notes,
+        }
+        for r in validated_records
+    ]
+
+
+def _register_upload_route(app: Flask, state: AppState) -> None:
+    """Document upload and LLM structuring endpoint."""
+    from .ingestion import IngestionValidator, LLMStructurer, parse_file
+
+    structurer = LLMStructurer()
+
+    @app.post("/api/ingest/upload")
+    def ingest_upload() -> Response | tuple[Response, int]:
+        if "file" not in request.files:
+            return jsonify(error="No file provided"), 400
+        f = request.files["file"]
+        if not f.filename:
+            return jsonify(error="Empty file name"), 400
+        raw_bytes = f.read(10 * 1024 * 1024 + 1)
+        if len(raw_bytes) > 10 * 1024 * 1024:
+            return jsonify(error="File exceeds maximum 10MB limit"), 413
+        default_date = request.form.get("default_date") or None
+        try:
+            chunks = parse_file(f.filename, raw_bytes)
+            if not chunks:
+                return jsonify(error="No readable text found in document"), 400
+            store_names_hint = list(state.store_name.values())
+            raw_records = []
+            for ch in chunks[:15]:
+                raw_records.extend(structurer.structure_chunk(ch, store_names_hint=store_names_hint, default_date=default_date))
+            validator = IngestionValidator(state.data.stores, state.resolver)
+            validated_records, stats = validator.validate_candidate_records(raw_records)
+            return jsonify(records=_format_ingested_records(validated_records), stats=stats, filename=f.filename)
+        except Exception as e:
+            return jsonify(error=str(e)), 500
+
+
+def _register_dataset_routes(app: Flask, state: AppState) -> None:
+    """Dataset swapping, reset, status, and export endpoints."""
+    from .ingestion import IngestionValidator
+
+    @app.get("/api/ingest/status")
+    def ingest_status() -> Response:
+        return jsonify(state.dataset_info())
+
+    @app.post("/api/ingest/analyze")
+    def ingest_analyze() -> Response | tuple[Response, int]:
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or "records" not in body:
+            abort(400)
+        records = body["records"]
+        name = body.get("name") or "Custom Upload"
+        if not isinstance(records, list) or not records:
+            return jsonify(error="No records provided to analyze"), 400
+        try:
+            df = IngestionValidator.to_feedback_dataframe(records)
+            if df.empty:
+                return jsonify(error="Records contain no valid data"), 400
+            info = state.load_custom_dataset(df, name=name)
+            return jsonify(status="ok", dataset=info)
+        except Exception as e:
+            return jsonify(error=str(e)), 500
+
+    @app.route("/api/ingest/reset", methods=["GET", "POST"])
+    def ingest_reset() -> Response:
+        return jsonify(status="ok", dataset=state.reset_to_default())
+
+    @app.post("/api/ingest/export")
+    def ingest_export() -> Response:
+        body = request.get_json(silent=True)
+        records = body.get("records", []) if isinstance(body, dict) else []
+        if not records:
+            abort(400)
+        df = IngestionValidator.to_feedback_dataframe(records)
+        resp = Response(df.to_csv(index=False), mimetype="text/csv")
+        resp.headers["Content-Disposition"] = 'attachment; filename="converted_feedback.csv"'
+        return resp
+
+
+def _ingest_routes(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
+    """Unstructured file ingestion, LLM structuring, preview, and dataset hot-swapping."""
+    _register_upload_route(app, state)
+    _register_dataset_routes(app, state)
+
+
 def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     """Build the allow-lists from the loaded data and register every API and page route."""
     meta = state.meta()
@@ -301,6 +400,7 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     _view_routes(app, state, ok)
     _post_routes(app, state, ok, cfg, gemini)
     _alert_routes(app, state, ok, cfg, delivery)
+    _ingest_routes(app, state, cfg)
 
     # Initialize and register Head Office Issue Tracking system
     data_dir = getattr(state, "_data_dir", None)
