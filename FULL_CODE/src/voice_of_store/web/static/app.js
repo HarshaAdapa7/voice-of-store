@@ -7,6 +7,9 @@ function el(tag, props, ...kids) {
   for (const [k, v] of Object.entries(props || {})) {
     if (k === "class") n.className = v;
     else if (k === "textContent") n.textContent = v;
+    else if (k === "style") {
+      /* Block setAttribute('style') to ensure strict CSP style-src 'self' compliance */
+    }
     else n.setAttribute(k, v);
   }
   for (const k of kids) {
@@ -1574,10 +1577,10 @@ function updateDatasetBanner(dataset) {
   const banner = $("dataset-banner");
   if (!banner) return;
   if (dataset && dataset.is_custom) {
-    banner.style.display = "flex";
+    banner.hidden = false;
     $("dataset-banner-text").textContent = (dataset.name || "Custom Upload") + " · " + (dataset.row_count || 0) + " records · " + (dataset.date_min || "") + " to " + (dataset.date_max || "");
   } else {
-    banner.style.display = "none";
+    banner.hidden = true;
   }
 }
 
@@ -1628,7 +1631,6 @@ function setupIngest() {
     startBtn.disabled = false;
     startBtn.removeAttribute("disabled");
     errorBox.hidden = true;
-    errorBox.style.display = "none";
     // Trigger extraction immediately upon file selection
     startExtraction();
   }
@@ -1639,11 +1641,8 @@ function setupIngest() {
       return;
     }
     spinner.hidden = false;
-    spinner.style.display = "block";
     errorBox.hidden = true;
-    errorBox.style.display = "none";
     resultsCard.hidden = true;
-    resultsCard.style.display = "none";
     startBtn.disabled = true;
     startBtn.setAttribute("disabled", "true");
 
@@ -1671,11 +1670,9 @@ function setupIngest() {
       console.error("Extraction error:", err);
       errorBox.textContent = "Extraction Error: " + err.message;
       errorBox.hidden = false;
-      errorBox.style.display = "block";
-    } finally {
+      } finally {
       spinner.hidden = true;
-      spinner.style.display = "none";
-      startBtn.disabled = false;
+        startBtn.disabled = false;
       startBtn.removeAttribute("disabled");
     }
   }
@@ -1687,7 +1684,6 @@ function setupIngest() {
 
   function renderIngestResults(records, stats) {
     resultsCard.hidden = false;
-    resultsCard.style.display = "block";
     setTimeout(() => resultsCard.scrollIntoView({ behavior: "smooth" }), 100);
     $("stat-total").textContent = "Total: " + (stats.total || records.length);
     $("stat-valid").textContent = "Valid: " + (stats.valid || 0);
@@ -1697,26 +1693,26 @@ function setupIngest() {
     tbody.replaceChildren();
 
     records.forEach((r, idx) => {
-      const tr = el("tr", { style: "border-bottom: 1px solid var(--border-color);" });
+      const tr = el("tr", { class: "ingest-preview-tr-row" });
 
       // Exclude checkbox
-      const tdExclude = el("td", { style: "padding: 8px; text-align: center;" });
+      const tdExclude = el("td", { class: "ingest-td-exclude" });
       const chk = el("input", { type: "checkbox" });
       chk.addEventListener("change", () => {
         r._excluded = chk.checked;
-        tr.style.opacity = chk.checked ? "0.4" : "1.0";
+        tr.classList.toggle("ingest-row-excluded", chk.checked);
       });
       tdExclude.appendChild(chk);
 
       // Feedback ID
-      const tdId = el("td", { style: "padding: 8px; font-weight: 600; font-family: monospace;" }, r.feedback_id);
+      const tdId = el("td", { class: "ingest-td-id" }, r.feedback_id);
 
       // Source ref
-      const tdSrc = el("td", { style: "padding: 8px; color: var(--text-muted); font-size: 12px;" }, r.source_reference || "-");
+      const tdSrc = el("td", { class: "ingest-td-src" }, r.source_reference || "-");
 
       // Channel select
-      const tdChannel = el("td", { style: "padding: 8px;" });
-      const chSel = el("select", { class: "form-control", style: "padding: 4px; font-size: 12px;" });
+      const tdChannel = el("td", { class: "ingest-td-cell" });
+      const chSel = el("select", { class: "form-control ingest-select-channel" });
       ["online_review", "in_app", "staff_shift_note", "call_centre_ticket"].forEach((c) => {
         const opt = el("option", { value: c }, c);
         if (c === r.channel) opt.selected = true;
@@ -1726,19 +1722,18 @@ function setupIngest() {
       tdChannel.appendChild(chSel);
 
       // Created at input
-      const tdDate = el("td", { style: "padding: 8px;" });
+      const tdDate = el("td", { class: "ingest-td-cell" });
       const dateInp = el("input", {
         type: "text",
         value: r.created_at,
-        class: "form-control",
-        style: "padding: 4px; font-size: 12px; width: 130px;"
+        class: "form-control ingest-input-date"
       });
       dateInp.addEventListener("input", () => { r.created_at = dateInp.value; });
       tdDate.appendChild(dateInp);
 
       // Store select
-      const tdStore = el("td", { style: "padding: 8px;" });
-      const stSel = el("select", { class: "form-control", style: "padding: 4px; font-size: 12px; width: 150px;" });
+      const tdStore = el("td", { class: "ingest-td-cell" });
+      const stSel = el("select", { class: "form-control ingest-select-store" });
       const emptyOpt = el("option", { value: "" }, "-- Unknown Store --");
       stSel.appendChild(emptyOpt);
       (META.stores || []).forEach((s) => {
@@ -1757,24 +1752,20 @@ function setupIngest() {
       tdStore.appendChild(stSel);
 
       // Text input
-      const tdText = el("td", { style: "padding: 8px;" });
+      const tdText = el("td", { class: "ingest-td-cell" });
       const textInp = el("input", {
         type: "text",
         value: r.text,
-        class: "form-control",
-        style: "width: 100%; padding: 4px; font-size: 12px;"
+        class: "form-control ingest-input-text"
       });
       textInp.addEventListener("input", () => { r.text = textInp.value; });
       tdText.appendChild(textInp);
 
       // Status pill
-      const tdStatus = el("td", { style: "padding: 8px;" });
+      const tdStatus = el("td", { class: "ingest-td-cell" });
       const isOk = r.status === "valid";
       const statusPill = el("span", {
-        class: "badge",
-        style: isOk
-          ? "background: var(--success-soft); color: var(--success-text); padding: 3px 6px; border-radius: 4px; font-size: 11px;"
-          : "background: var(--warning-soft); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-size: 11px;",
+        class: isOk ? "badge ingest-badge-valid" : "badge ingest-badge-review",
         title: r.notes || ""
       }, isOk ? "VALID" : "REVIEW");
       tdStatus.appendChild(statusPill);
@@ -2324,7 +2315,7 @@ function renderStoreFormatCards(byFormat) {
         el("div", { class: "ho-format-stat-item" }, "Awaiting: ", el("b", {}, String(stats.awaiting))),
         el("div", { class: "ho-format-stat-item" }, "Unresolved: ", el("b", {}, String(stats.unresolved)))
       ),
-      el("div", { style: "margin-top: 10px;" }, filterBtn)
+      el("div", { class: "ho-mt-10" }, filterBtn)
     );
   });
   return el("div", { class: "ho-format-grid" }, ...cards);
@@ -2334,9 +2325,9 @@ function renderStoreProblemsTable(issues, summaryTitle) {
   if (!issues || issues.length === 0) {
     return el(
       "div",
-      { class: "card", style: "margin-top: 16px;" },
+      { class: "card ho-mt-16" },
       el("h3", { class: "card-title" }, summaryTitle || "Store Problem Resolution Status"),
-      el("div", { class: "sub-meta", style: "padding: 16px 0;" }, "No store problems match the active filters (Store Format, Region, Store).")
+      el("div", { class: "sub-meta ho-py-16" }, "No store problems match the active filters (Store Format, Region, Store).")
     );
   }
 
@@ -2457,7 +2448,7 @@ function renderStoreProblemsTable(issues, summaryTitle) {
 
   return el(
     "div",
-    { class: "card", style: "margin-top: 16px;" },
+    { class: "card ho-mt-16" },
     el(
       "div",
       { class: "card-header-row" },
@@ -2500,14 +2491,14 @@ async function renderHoOverview(container) {
   if (ctx.role === "store_owner") {
     roleNotice = el(
       "div",
-      { class: "banner banner-info", style: "margin-bottom: 14px;" },
+      { class: "banner banner-info ho-mb-14" },
       el("b", {}, "\U0001f3ea STORE OWNER PORTAL: "),
       "Logged in as Store Owner" + (ctx.storeId ? " (" + ctx.storeId + ")" : "") + ". You can log corrective actions taken on your store's problems and submit them for Head Office verification."
     );
   } else if (ctx.role === "head_office_admin") {
     roleNotice = el(
       "div",
-      { class: "banner banner-info", style: "margin-bottom: 14px;" },
+      { class: "banner banner-info ho-mb-14" },
       el("b", {}, "\U0001f3e2 HEAD OFFICE CONTROL CENTER: "),
       "Logged in as Head Office Administrator. You can monitor problems across all stores, check actions taken by store owners, and verify resolution closures."
     );
@@ -2804,13 +2795,13 @@ async function openIssueModal(issueId) {
 
     const actionOverviewCard = el(
       "div",
-      { class: "card", style: "border-left: 4px solid " + (latestActionDesc ? "#10b981" : "#f59e0b") },
+      { class: latestActionDesc ? "card ho-action-card-success" : "card ho-action-card-pending" },
       el("h4", { class: "ho-section-title" }, "Action Taken on Problem"),
       latestActionDesc
         ? el("div", {},
-            el("div", { style: "font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 6px;" }, latestActionDesc),
+            el("div", { class: "ho-action-desc-title" }, latestActionDesc),
             el("div", { class: "sub-meta" }, "Logged by: " + latestActionBy + " \u2022 " + (latestActionTime || "Recent")),
-            actions.length > 0 && actions[0].blockers ? el("div", { class: "badge badge-critical", style: "margin-top: 6px;" }, "Blocker: " + actions[0].blockers) : null
+            actions.length > 0 && actions[0].blockers ? el("div", { class: "badge badge-critical ho-mt-6" }, "Blocker: " + actions[0].blockers) : null
           )
         : el("div", { class: "sub-meta" }, "\u23f3 No corrective action recorded yet by store owner. Awaiting store response.")
     );
@@ -2824,8 +2815,8 @@ async function openIssueModal(issueId) {
 
     // STORE OWNER ACTION FORM
     if (iss.current_status !== "VERIFIED_CLOSED" && isStoreOwner) {
-      const storeActionCard = el("div", { class: "card", style: "border: 1px solid #bbf7d0; background: #f0fdf4;" });
-      storeActionCard.appendChild(el("h4", { class: "ho-section-title", style: "color: #166534;" }, "\U0001f3ea Store Owner Action Update (" + (iss.store_name || iss.store_id) + ")"));
+      const storeActionCard = el("div", { class: "card ho-store-action-card" });
+      storeActionCard.appendChild(el("h4", { class: "ho-section-title ho-store-action-title" }, "\U0001f3ea Store Owner Action Update (" + (iss.store_name || iss.store_id) + ")"));
       storeActionCard.appendChild(
         el("p", { class: "sub-meta" }, "Record corrective action taken at your store. Once work is completed, submit for Head Office verification. Only Head Office can officially verify and close issues.")
       );

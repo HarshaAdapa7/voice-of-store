@@ -183,7 +183,8 @@ def _check_origin_and_site(cfg: SecurityConfig) -> Response | None:
 
 def _check_content_and_size(cfg: SecurityConfig) -> Response | None:
     """Validate request content-length and content-type headers."""
-    max_len = 10 * 1024 * 1024 if request.path == "/api/ingest/upload" else cfg.max_body_bytes
+    is_ingest = request.path.startswith("/api/ingest/")
+    max_len = 10 * 1024 * 1024 if is_ingest else cfg.max_body_bytes
     if request.content_length and request.content_length > max_len:
         return _err(413, "payload exceeds size limit")
     if request.path == "/api/ingest/upload":
@@ -202,7 +203,7 @@ def _post_checks(cfg: SecurityConfig, limiter: RateLimiter, client: str) -> Resp
     err = _check_content_and_size(cfg) or _check_origin_and_site(cfg)
     if err is not None:
         return err
-    if request.path in ("/api/ingest/upload", "/api/ingest/reset"):
+    if request.path.startswith("/api/ingest/"):
         return None
     bucket, limit = (
         ("assistant", cfg.assistant_per_minute) if request.path == "/api/assistant" else ("classify", cfg.classify_per_minute)

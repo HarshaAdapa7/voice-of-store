@@ -2085,6 +2085,9 @@ th.text-center, td.text-center {
 }
 
 
+#dataset-banner[hidden] {
+  display: none !important;
+}
 #ingest-file-input {
   display: none !important;
 }
@@ -2125,3 +2128,29 @@ th.text-center, td.text-center {
 .th-date { padding: 10px; width: 140px; }
 .th-store { padding: 10px; width: 160px; }
 .th-status { padding: 10px; width: 100px; }
+
+/* Ingest Results Table & Cell Styles (CSP compliant) */
+.ingest-preview-tr-row { border-bottom: 1px solid var(--border-color); }
+.ingest-preview-tr-row.ingest-row-excluded { opacity: 0.4; }
+.ingest-td-exclude { padding: 8px; text-align: center; }
+.ingest-td-id { padding: 8px; font-weight: 600; font-family: monospace; }
+.ingest-td-src { padding: 8px; color: var(--text-muted); font-size: 12px; }
+.ingest-td-cell { padding: 8px; }
+.ingest-select-channel { padding: 4px; font-size: 12px; }
+.ingest-input-date { padding: 4px; font-size: 12px; width: 130px; }
+.ingest-select-store { padding: 4px; font-size: 12px; width: 150px; }
+.ingest-input-text { width: 100%; padding: 4px; font-size: 12px; }
+.ingest-badge-valid { background: var(--success-soft); color: var(--success-text); padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.ingest-badge-review { background: var(--warning-soft); color: var(--warning-text); padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+/* Head Office Layout & Action Styles (CSP compliant) */
+.ho-mt-6 { margin-top: 6px; }
+.ho-mt-10 { margin-top: 10px; }
+.ho-mt-16 { margin-top: 16px; }
+.ho-py-16 { padding: 16px 0; }
+.ho-mb-14 { margin-bottom: 14px; }
+.ho-action-card-success { border-left: 4px solid #10b981; }
+.ho-action-card-pending { border-left: 4px solid #f59e0b; }
+.ho-action-desc-title { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 6px; }
+.ho-store-action-card { border: 1px solid #bbf7d0; background: #f0fdf4; }
+.ho-store-action-title { color: #166534; }

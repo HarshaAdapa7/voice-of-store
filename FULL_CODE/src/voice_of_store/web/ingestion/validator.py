@@ -130,11 +130,11 @@ class IngestionValidator:
         for r in records:
             clean_rows.append(
                 {
-                    "feedback_id": r["feedback_id"],
-                    "channel": r["channel"],
-                    "created_at": r["created_at"],
-                    "store_id": r["store_id"],
-                    "text": r["text"],
+                    "feedback_id": r.get("feedback_id", ""),
+                    "channel": r.get("channel", "online_review"),
+                    "created_at": r.get("created_at", ""),
+                    "store_id": r.get("store_id", ""),
+                    "text": r.get("text", ""),
                 }
             )
         df = pd.DataFrame(clean_rows, columns=FEEDBACK_COLS)

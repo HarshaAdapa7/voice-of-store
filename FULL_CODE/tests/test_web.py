@@ -93,6 +93,12 @@ class StubState:
             raise RuntimeError("secret internal detail /etc/passwd")
         return dict(issue_type="IT10")
 
+    def load_custom_dataset(self, df, name=""):
+        return dict(name=name, row_count=len(df), is_custom=True)
+
+    def reset_to_default(self):
+        return dict(is_custom=False)
+
 
 def make(**kw):
     cfg = SecurityConfig(**kw)
@@ -171,6 +177,18 @@ def test_invalid_json_and_oversize_body(client):
     assert client.post("/api/classify").status_code == 415
     assert client.post("/api/classify", data="{not json", headers=JSON).status_code == 400
     assert client.post("/api/classify", data=b'{"text":"' + b"a" * 20000 + b'"}', headers=JSON).status_code == 413
+
+
+def test_ingest_analyze_size_limit(client):
+    # 50 records is ~25KB, exceeds standard 16KB max_body_bytes but allowed for ingest endpoints
+    records = [
+        {"feedback_id": f"F{i:03d}", "created_at": "2026-08-03", "store_id": "ST-ABCDE", "text": "Customer note text " * 30}
+        for i in range(50)
+    ]
+    resp = client.post("/api/ingest/analyze", json={"records": records}, headers=JSON)
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"
+    assert resp.get_json()["dataset"]["row_count"] == 50
 
 
 def test_query_parameters_use_allow_lists(client):
