@@ -163,5 +163,5 @@ def emit_flags(
             wk_flags = _collect_week_flags(w, wk_rows, ss, tt, stores, types, res, i, h, resolver)
             _append_onset_flag(w, wk_rows, cal, resolver, wk_flags)
             wk_flags.sort(key=lambda x: -x["confidence"])
-            out.extend(wk_flags[:C.MAX_FLAGS_PER_WEEK])
+            out.extend(wk_flags[: C.MAX_FLAGS_PER_WEEK])
     return pd.DataFrame(out, columns=C.FLAG_COLS)

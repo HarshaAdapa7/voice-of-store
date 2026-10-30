@@ -10,7 +10,7 @@ import smtplib
 import ssl
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -123,7 +123,7 @@ class AlertDelivery:
             "batch_id": batch_id,
             "week": week,
             "status": status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         if approved_by:
             entry["approved_by"] = approved_by

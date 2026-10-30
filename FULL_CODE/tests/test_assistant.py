@@ -244,6 +244,7 @@ def test_gemini_disabled_without_key_and_hides_provider_errors():
         GeminiAssistant(api_key="test-only", opener=failed_opener).summarize({"reply": "local result"})
     assert "private" not in str(error.value)
 
+
 def test_deduplication_and_channels_queries(bot):
     a, _ = bot
     r_dedup = a.ask("how does deduplication work?")

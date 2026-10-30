@@ -184,25 +184,23 @@ def _view_routes(app: Flask, state: AppState, ok: Allowed) -> None:
         return jsonify(state.store_overview(_arg("store_id", ok.stores, _ID), _arg("week", ok.weeks, _DATE)))
 
 
+def _validate_assistant_input(body: object, max_chars: int) -> tuple[str, str]:
+    if not isinstance(body, dict) or set(body) not in ({"message"}, {"message", "mode"}):
+        abort(400)
+    message, mode = body["message"], body.get("mode", "local")
+    if not isinstance(message, str) or not message.strip() or len(message) > max_chars or mode not in ("local", "gemini"):
+        abort(400)
+    return message, mode
+
+
 def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, gemini: GeminiAssistant) -> None:
     """The two JSON POST endpoints: exact field sets, bounded lengths, allow-listed channel."""
     assistant = Assistant(state)
 
     @app.post("/api/assistant")
-    def post_assistant() -> Response:
+    def post_assistant() -> Response | tuple[Response, int]:
         """Answer one question of at most 300 characters."""
-        body = request.get_json(silent=True)
-        if not isinstance(body, dict) or set(body) not in ({"message"}, {"message", "mode"}):
-            abort(400)
-        message = body["message"]
-        mode = body.get("mode", "local")
-        if (
-            not isinstance(message, str)
-            or not message.strip()
-            or len(message) > MAX_QUESTION_CHARS
-            or mode not in ("local", "gemini")
-        ):
-            abort(400)
+        message, mode = _validate_assistant_input(request.get_json(silent=True), MAX_QUESTION_CHARS)
         result = assistant.ask(message)
         if mode == "gemini":
             custom_key = request.headers.get("X-Gemini-API-Key", "").strip().strip("'\"")
@@ -237,7 +235,7 @@ def _alert_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig,
         return auth.username
 
     @app.get("/api/alerts/preview")
-    def preview_alerts() -> Response:
+    def preview_alerts() -> Response | tuple[Response, int]:
         _only("week")
         if not approver():
             return jsonify(error="forbidden"), 403
@@ -245,7 +243,7 @@ def _alert_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig,
         return jsonify(delivery.prepare(week, state.flags_for(week)))
 
     @app.post("/api/alerts/send")
-    def send_alerts() -> Response:
+    def send_alerts() -> Response | tuple[Response, int]:
         operator = approver()
         if not operator:
             return jsonify(error="forbidden"), 403

@@ -91,10 +91,8 @@ class GeminiAssistant:
                     text = re.sub(re.escape(name), "[store]", text, flags=re.IGNORECASE)
             return _PHONE.sub("[phone]", _EMAIL.sub("[email]", text))[:500]
 
-        safe = {
-            key: clean(result[key])
-            for key in ("intent", "reply", "week", "source")
-            if result.get(key) is not None
+        safe: dict[str, object] = {
+            key: clean(result[key]) for key in ("intent", "reply", "week", "source") if result.get(key) is not None
         }
         safe_items = []
         for item in result.get("items", [])[:8]:
@@ -111,13 +109,10 @@ class GeminiAssistant:
 
     def _call_model(self, model: str, body: dict) -> str | None:
         """Call one Gemini model; return text or None on 404 (model not found)."""
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{quote(model, safe='')}:generateContent"
-        )
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model, safe='')}:generateContent"
         if self._api_key and self._api_key != "test-only":
             url += f"?key={quote(self._api_key)}"
-        request = Request(
+        request = Request(  # noqa: S310
             url,
             data=json.dumps(body).encode("utf-8"),
             headers={"Content-Type": "application/json", "X-goog-api-key": self._api_key},

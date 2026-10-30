@@ -89,7 +89,7 @@ def static_checks() -> list[Check]:
     big = [
         f"{p.name}({len(p.read_text(encoding='utf-8').splitlines())})"
         for p in py_files("src")
-        if len(p.read_text(encoding='utf-8').splitlines()) > MAX_MODULE_LINES
+        if len(p.read_text(encoding="utf-8").splitlines()) > MAX_MODULE_LINES
     ]
     out.append(Check("Quality", f"modules at most {MAX_MODULE_LINES} lines", 2, not big, ", ".join(big)))
     out.append(

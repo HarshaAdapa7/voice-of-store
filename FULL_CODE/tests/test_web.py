@@ -303,9 +303,9 @@ def test_alert_preview_and_send_require_authenticated_batch_approval(monkeypatch
     monkeypatch.setattr(server, "AlertDelivery", FakeDelivery)
     unauthenticated = make()
     assert unauthenticated.get("/api/alerts/preview", query_string={"week": WEEK}).status_code == 403
-    assert unauthenticated.post(
-        "/api/alerts/send", json={"week": WEEK, "batch_id": "a" * 64, "approved": True}
-    ).status_code == 403
+    assert (
+        unauthenticated.post("/api/alerts/send", json={"week": WEEK, "batch_id": "a" * 64, "approved": True}).status_code == 403
+    )
 
     client = _auth_client()
     auth = _basic("judge", TEST_PASSWORD)
@@ -460,6 +460,7 @@ def test_gemini_assistant_mode_is_optional(monkeypatch):
 
         def summarize(self, result, store_names):
             from voice_of_store.gemini import GeminiError
+
             raise GeminiError("Gemini summary is unavailable")
 
     monkeypatch.setattr(server, "GeminiAssistant", FailingGemini)
