@@ -89,12 +89,12 @@ class GeminiAssistant:
         }
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{quote(self.model, safe='')}:generateContent?key={quote(self._api_key, safe='')}"
+            f"{quote(self.model, safe='')}:generateContent"
         )
         request = Request(
             url,
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "X-goog-api-key": self._api_key},
             method="POST",
         )
         try:

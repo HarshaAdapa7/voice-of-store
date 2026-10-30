@@ -198,13 +198,14 @@ def test_gemini_receives_only_redacted_deterministic_answer():
     import io
     import json
 
-    from voice_of_store.web.gemini import GeminiAssistant
+    from voice_of_store.gemini import GeminiAssistant
 
     captured = {}
 
     def opener(request, timeout):
         captured["body"] = json.loads(request.data)
         captured["url"] = request.full_url
+        captured["api_key_header"] = request.get_header("X-goog-api-key")
         captured["timeout"] = timeout
         return io.BytesIO(b'{"candidates":[{"content":{"parts":[{"text":"Grounded summary."}]}}]}')
 
@@ -226,11 +227,12 @@ def test_gemini_receives_only_redacted_deterministic_answer():
     assert summary == "Grounded summary."
     assert "Sensitive Store" not in serialized and "owner@example.com" not in serialized and "9876543210" not in serialized
     assert "RAW QUESTION" not in serialized and "RAW FEEDBACK" not in serialized
-    assert "Sensitive Store" not in captured["url"] and "test-only" in captured["url"]
+    assert "Sensitive Store" not in captured["url"] and "test-only" not in captured["url"]
+    assert captured["api_key_header"] == "test-only"
 
 
 def test_gemini_disabled_without_key_and_hides_provider_errors():
-    from voice_of_store.web.gemini import GeminiAssistant, GeminiError
+    from voice_of_store.gemini import GeminiAssistant, GeminiError
 
     with pytest.raises(GeminiError, match="not configured"):
         GeminiAssistant(api_key="").summarize({"reply": "local result"})
@@ -241,3 +243,26 @@ def test_gemini_disabled_without_key_and_hides_provider_errors():
     with pytest.raises(GeminiError, match="unavailable") as error:
         GeminiAssistant(api_key="test-only", opener=failed_opener).summarize({"reply": "local result"})
     assert "private" not in str(error.value)
+
+def test_deduplication_and_channels_queries(bot):
+    a, _ = bot
+    r_dedup = a.ask("how does deduplication work?")
+    assert r_dedup["intent"] == "deduplication" and "clusters" in r_dedup["reply"]
+    r_chan = a.ask("what feedback channels do we have?")
+    assert r_chan["intent"] == "channels" and len(r_chan["items"]) == 4
+
+
+def test_detection_and_safety_queries(bot):
+    a, _ = bot
+    r_det = a.ask("tell me about the detector lead time and score")
+    assert r_det["intent"] == "detection" and "CUSUM" in r_det["reply"]
+    r_safe = a.ask("what are the safety critical issues?")
+    assert r_safe["intent"] == "safety" and "policy floor" in r_safe["reply"]
+
+
+def test_rising_issue_filter_and_natural_classify(bot):
+    a, _ = bot
+    r_rise = a.ask("Which stores have rising refrigeration complaints?")
+    assert r_rise["intent"] == "emerging" and "Refrigeration" in r_rise["reply"]
+    r_class = a.ask("can you classify comment: freezer is leaking water on the floor")
+    assert r_class["intent"] == "classify" and r_class["items"]

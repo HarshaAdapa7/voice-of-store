@@ -21,3 +21,13 @@ build/
 *.egg-info/
 
 .github/
+!FULL_CODE/.github/
+FULL_CODE/.github/*
+!FULL_CODE/.github/agents/
+FULL_CODE/.github/agents/*
+!FULL_CODE/.github/agents/voice-of-store-engine.agent.md
+
+.vscode/
+
+FULL_CODE/.github/
+FULL_CODE/AUTOMATION.md

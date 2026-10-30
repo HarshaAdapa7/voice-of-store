@@ -32,7 +32,7 @@ function svgEl(tag, attrs, ...kids) {
 }
 
 async function api(path, opts) {
-  const r = await fetch(path, Object.assign({ credentials: "omit", cache: "no-store" }, opts));
+  const r = await fetch(path, Object.assign({ credentials: "same-origin", cache: "no-store" }, opts));
   if (!r.ok) throw new Error("Request failed with status " + r.status);
   return r.json();
 }
@@ -1335,9 +1335,14 @@ async function ask(message) {
   const wait = say("bot", "Analyzing Voice-of-Store operational intelligence\u2026");
   wait.setAttribute("aria-busy", "true");
   try {
+    const headers = { "Content-Type": "application/json" };
+    const customKey = sessionStorage.getItem("gemini_api_key");
+    if (customKey) {
+      headers["X-Gemini-API-Key"] = customKey;
+    }
     const r = await api("/api/assistant", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify({ message: message, mode: $("assistant-mode").value })
     });
     wait.remove();
@@ -1364,11 +1369,59 @@ async function ask(message) {
 }
 
 function setupAsk(suggestions) {
-  const geminiOption = $("assistant-mode").querySelector('option[value="gemini"]');
-  if (!META.assistant_modes || !META.assistant_modes.gemini) {
-    geminiOption.disabled = true;
-    geminiOption.textContent = "Local + Gemini summary (not configured)";
+  const modeSelect = $("assistant-mode");
+  const geminiOption = modeSelect.querySelector('option[value="gemini"]');
+  const keyBtn = $("btn-gemini-key");
+
+  function refreshGeminiOption() {
+    const customKey = sessionStorage.getItem("gemini_api_key");
+    const serverConfigured = META.assistant_modes && META.assistant_modes.gemini;
+    if (customKey || serverConfigured) {
+      geminiOption.disabled = false;
+      geminiOption.textContent = "Local + Gemini summary";
+      if (keyBtn) {
+        keyBtn.textContent = customKey ? "🔑 Key Active" : "🔑 Server Key";
+        keyBtn.title = customKey ? "Gemini key active from session" : "Gemini key configured on server";
+      }
+    } else {
+      geminiOption.disabled = false;
+      geminiOption.textContent = "Local + Gemini summary (enter key)";
+      if (keyBtn) {
+        keyBtn.textContent = "🔑 Set Gemini Key";
+        keyBtn.title = "Click to enter Google Gemini API key";
+      }
+    }
   }
+
+  if (keyBtn) {
+    keyBtn.addEventListener("click", () => {
+      const current = sessionStorage.getItem("gemini_api_key") || "";
+      const val = prompt("Enter Google Gemini API Key (starts with AIzaSy...):", current);
+      if (val !== null) {
+        const trimmed = val.trim();
+        if (trimmed) {
+          sessionStorage.setItem("gemini_api_key", trimmed);
+          modeSelect.value = "gemini";
+        } else {
+          sessionStorage.removeItem("gemini_api_key");
+          modeSelect.value = "local";
+        }
+        refreshGeminiOption();
+      }
+    });
+  }
+
+  modeSelect.addEventListener("change", () => {
+    if (modeSelect.value === "gemini") {
+      const customKey = sessionStorage.getItem("gemini_api_key");
+      const serverConfigured = META.assistant_modes && META.assistant_modes.gemini;
+      if (!customKey && !serverConfigured && keyBtn) {
+        keyBtn.click();
+      }
+    }
+  });
+
+  refreshGeminiOption();
   $("chips").replaceChildren(
     ...suggestions.map((s) => {
       const b = el("button", { type: "button", class: "chip-btn" }, s);

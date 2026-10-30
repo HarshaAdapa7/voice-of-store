@@ -15,11 +15,11 @@ import sys
 from pathlib import Path
 
 ALLOWED_TOP = {"README.md", ".gitignore", "LICENSE", "submission", "FULL_CODE", ".git"}
-FORBIDDEN_IMPORT = re.compile(r"^\s*(import|from)\s+(requests|urllib|http|socket|pickle|joblib|httpx|aiohttp)\b", re.M)
-# only the optional Gemini summary adapter may make an outbound request; detector code stays offline
+FORBIDDEN_IMPORT = re.compile(r"^\s*(import|from)\s+(requests|urllib|http|socket|smtplib|pickle|joblib|httpx|aiohttp)\b", re.M)
+# outbound access is confined to these opt-in adapters; detector and classifier paths stay offline
 FORBIDDEN_WEB = re.compile(r"^\s*(import|from)\s+(requests|socket|pickle|joblib|httpx|aiohttp|subprocess)\b", re.M)
 WEB_IMPORT = re.compile(r"^\s*(import|from)\s+(voice_of_store\.web|\.web|\.\.web)\b", re.M)
-GEMINI_CLIENT = Path("src/voice_of_store/gemini.py")
+OUTBOUND_ADAPTERS = {Path("src/voice_of_store/gemini.py"), Path("src/voice_of_store/notifications.py")}
 HARD_CODED = re.compile(r"\b20\d\d-\d\d-\d\d\b|\b(ST|FB)-[A-Z0-9]{5,8}\b")
 SECRETS = re.compile(r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{8,}", re.I)
 
@@ -80,7 +80,7 @@ def main() -> int:
     ]
     for py in core:
         text = py.read_text(encoding="utf-8")
-        if FORBIDDEN_IMPORT.search(text) and py.relative_to(code) != GEMINI_CLIENT:
+        if FORBIDDEN_IMPORT.search(text) and py.relative_to(code) not in OUTBOUND_ADAPTERS:
             bad.append(f"network/pickle import in {py.relative_to(root)}")
         if WEB_IMPORT.search(text):
             bad.append(f"detector-side module imports the web layer: {py.relative_to(root)}")

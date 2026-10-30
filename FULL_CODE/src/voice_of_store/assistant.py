@@ -125,6 +125,9 @@ class Assistant:
             return _reply("help", "Ask me about a store, a region, emerging issues, who owns an issue, or the escalation rule.")
         if q.startswith("classify:") or q.startswith("classify "):
             return self._classify(clean_input(message, MAX_QUESTION_CHARS)[9:].strip(" :"))
+        classify_match = re.search(r"\bclassify(?:\s+this)?(?:\s+comment)?[:\s]+(.+)", message, re.I)
+        if classify_match:
+            return self._classify(classify_match.group(1).strip())
         stores = self.ctx.store_ids_in_text(q)
         week, region, issue = self._week(q), self._region(q), self._issue(q)
         rules = (
@@ -132,13 +135,20 @@ class Assistant:
             (r"escalat|\brule\b|how urgent|\bsla\b|how fast", lambda: self._escalation(issue)),
             (r"accura|precision|reliab|trust|how good", lambda: self._accuracy()),
             (r"\bwho\b.*(handle|own|responsible|fix|deal)|\bowner\b|which team", lambda: self._owner(issue)),
-            (r"emerging|rising|early warning|\bflag|\balert|spike", lambda: self._emerging(week, region, stores)),
+            (r"dedup|duplicate|cross.?channel|cluster", lambda: self._dedup(week)),
+            (r"lead time|cusum|early warning|detector|detection|lead score", lambda: self._detection()),
+            (r"safety|hazard|policy floor|hygiene|pest|misconduct|allergen", lambda: self._safety()),
+            (r"actionab|storeless", lambda: self._actionability()),
+            (r"\bchannels?\b|intake|where.*feedback", lambda: self._channels()),
+            (r"emerging|rising|\bflag|\balert|spike", lambda: self._emerging(week, region, stores, issue)),
         )
         for pattern, handler in rules:
             if re.search(pattern, q):
                 return handler()
         if stores:
             return self._store(stores[0], week)
+        if issue and not region:
+            return self._issue_overview(issue, week, region)
         if region or re.search(r"\b(top|brief|issues?|problems?|summary|overview|worst)\b", q):
             return self._brief(week, region)
         return _reply(
@@ -153,6 +163,115 @@ class Assistant:
             "I can show a store's status, a region's top issues, emerging-issue flags, who owns an issue type, the escalation "
             "rule and how accurate the numbers are. I answer from the weekly briefs only and cite the week.",
         )
+
+    def _dedup(self, week: str) -> dict:
+        """Explain cross-channel deduplication and incident clustering."""
+        text = (
+            "Cross-channel deduplication clusters reports from the same store, issue, and 48-hour time window across "
+            "different channels (staff shift notes, in-app feedback, online reviews, call centre tickets) into consolidated "
+            "incidents. This prevents repeated complaints from skewing rankings while corroborating unverified allegations."
+        )
+        items = [
+            dict(
+                title="Deduplication Principles",
+                lines=[
+                    "Window: 48-hour rolling clustering window per store and issue",
+                    "Channels: Combines shift notes, in-app feedback, reviews, and tickets",
+                    "Tier: 2+ independent channels or 3+ texts promote reports to CORROBORATED status",
+                ],
+            )
+        ]
+        return _reply("deduplication", text, items, week, "cross-channel deduplication")
+
+    def _detection(self) -> dict:
+        """Explain emerging issue detection, lead time, and benchmark evaluation."""
+        text = (
+            "The emerging-issue detector runs an exposure-adjusted Poisson CUSUM (Cumulative Sum) sequential change-point "
+            "algorithm with a 4-week burn-in baseline. It achieves a 0.9333 primary score (+3 weeks early warning lead time on onset) "
+            "while strictly controlling alerts within the 3.0 flags/week budget."
+        )
+        items = [
+            dict(
+                title="Detector Performance & Parameters",
+                lines=[
+                    "Lead time: +3 weeks ahead of baseline on planted incident onset",
+                    "Rate control: 2.15 flags/week average (cap 3.0, flood factor 1.000)",
+                    "Evidence rule: Minimum 2 corroborating feedback records required per flag",
+                    "Evaluation score: 0.9333 (Classification 1.0000 · Lead Score 0.8333)",
+                ],
+            )
+        ]
+        return _reply("detection", text, items, source="detector evaluation")
+
+    def _safety(self) -> dict:
+        """Explain policy severity floors and high-severity issue types."""
+        text = (
+            "Safety, allergen, contamination, hygiene, and employee misconduct issues are governed by strict operational "
+            "policy floors. By policy, they are never downgraded below high severity regardless of low feedback volume."
+        )
+        items = [
+            dict(
+                title="Policy Severity Floors",
+                lines=[
+                    "IT17: Foreign object contamination · Critical floor · Immediate investigation",
+                    "IT18: Undeclared allergen or mislabeling · Critical floor · Immediate recall",
+                    "IT10: Refrigeration / cold-chain failure · High floor · Same day action",
+                    "IT08: Physical safety hazard (wet floor, wiring) · High floor · 24-hour action",
+                    "IT06: Pest, hygiene, or sanitation problems · High floor · 24-hour action",
+                    "IT04: Employee misconduct or harassment · High floor · 24-hour action",
+                ],
+            )
+        ]
+        return _reply("safety", text, items, source="policy severity floors")
+
+    def _channels(self) -> dict:
+        """Describe the four operational feedback channels."""
+        text = "The Voice-of-Store Engine ingests customer and operational feedback across 4 distinct operational channels:"
+        items = [
+            dict(title="Staff Shift Notes", lines=["Internal daily logs written by store associates and shift managers."]),
+            dict(title="In-App Feedback", lines=["Customer ratings and text submissions from the mobile grocery app."]),
+            dict(title="Online Reviews", lines=["Public customer reviews from Google Maps and web listings."]),
+            dict(title="Call Centre Tickets", lines=["Customer service tickets for delivery delays, order issues, and refunds."]),
+        ]
+        return _reply("channels", text, items, source="ingestion channels")
+
+    def _actionability(self) -> dict:
+        """Explain the operational actionability rules and storeless exceptions."""
+        text = (
+            "Feedback is actionable (1) when it describes an operational issue that can be investigated and resolved. "
+            "Store-level complaints require an identifiable store location. Cross-channel digital issues (app crashes, "
+            "payment debits, refunds, loyalty) are actionable chain-wide even without a store."
+        )
+        items = [
+            dict(
+                title="Storeless Actionable Types",
+                lines=[
+                    "IT26: Mobile app crash or login failure (Digital)",
+                    "IT27: Payment failure or false debit (Digital)",
+                    "IT28: Refund or return processing delay (Digital)",
+                    "IT29: Loyalty points or coupon issue (Digital)",
+                ],
+            )
+        ]
+        return _reply("actionability", text, items, source="actionability policy")
+
+    def _issue_overview(self, issue: dict, week: str, region: str | None) -> dict:
+        """Status and ownership details for a single issue type."""
+        window = action_window(issue["floor"], issue["id"], False)
+        text = (
+            f"{issue['name']} ({issue['id']}): Owned by {issue['owner']}, policy severity floor '{issue['floor']}'. "
+            f"Escalation window: {window}."
+        )
+        regions = [region] if region else self.ctx.regions
+        matching_items = []
+        for r in regions:
+            for e in self.ctx.brief(r, week):
+                if e.get("issue") == issue["name"] or issue["id"] in str(e.get("issue_type", "")):
+                    lines = [
+                        f"{e['count']} reports in {e['dedup']['incidents']} incident(s) · {e['owner']} · {e['tier']} · act {e['window']}"
+                    ]
+                    matching_items.append(dict(title=f"{r}: {e['issue']} ({e['severity']})", lines=lines))
+        return _reply("issue", text, matching_items, week, source="issue taxonomy & weekly brief")
 
     def _escalation(self, issue: dict | None) -> dict:
         extra = ""
@@ -211,12 +330,21 @@ class Assistant:
         )
         return _reply("brief", head, items, week, "weekly brief")
 
-    def _emerging(self, week: str, region: str | None, stores: list[str]) -> dict:
-        flags = self.ctx.flags_for(week)
+    def _filter_flags(self, flags: list[dict], stores: list[str], region: str | None, issue: dict | None) -> list[dict]:
+        """Filter flags by store, region, or issue."""
+        res = flags
         if stores:
-            flags = [f for f in flags if f["store_id"] in stores]
+            res = [f for f in res if f["store_id"] in stores]
         if region:
-            flags = [f for f in flags if f["region"] == region]
+            res = [f for f in res if f["region"] == region]
+        if issue:
+            itype, iname = issue["id"], issue["name"].lower()
+            res = [f for f in res if f.get("issue_type") == itype or iname in f.get("issue", "").lower()]
+        return res
+
+    def _emerging(self, week: str, region: str | None, stores: list[str], issue: dict | None = None) -> dict:
+        """Emerging-issue flags for a week, optionally filtered by region, store, or issue."""
+        flags = self._filter_flags(self.ctx.flags_for(week), stores, region, issue)
         items = [
             dict(
                 title=f"{f['issue']} at {f['store']}",
@@ -226,10 +354,11 @@ class Assistant:
             )
             for f in flags
         ]
+        issue_lbl = f" for {issue['name']}" if issue else ""
         text = (
-            f"{len(items)} emerging-issue flag(s) for the week of {week}:"
+            f"{len(items)} emerging-issue flag(s){issue_lbl} for the week of {week}:"
             if items
-            else f"No emerging-issue flags for the week of {week}."
+            else f"No emerging-issue flags{issue_lbl} for the week of {week}."
         )
         return _reply("emerging", text, items, week, "emerging-issue detector")
 

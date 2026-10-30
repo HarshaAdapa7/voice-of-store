@@ -1491,3 +1491,9 @@ th.text-center, td.text-center {
     break-inside: avoid;
   }
 }
+
+.gemini-key-btn {
+  font-size: 12px;
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+}

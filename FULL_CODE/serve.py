@@ -57,13 +57,37 @@ def run_server(app, host: str, port: int) -> None:
     )
 
 
+def _load_env_file() -> None:
+    """Read key-value pairs from .env or FULL_CODE/.env into os.environ if not already set."""
+    candidates = (Path(".env"), Path("FULL_CODE/.env"), Path(__file__).resolve().parent / ".env")
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            s = line.strip()
+            if s and not s.startswith("#") and "=" in s:
+                k, v = s.split("=", 1)
+                k_clean = k.strip()
+                v_clean = v.strip().strip("'\"")
+                if k_clean and k_clean not in os.environ:
+                    os.environ[k_clean] = v_clean
+
+
 def main() -> None:
+    _load_env_file()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default="data")
     ap.add_argument("--submission", default="submission")
     ap.add_argument("--host", default=C.WEB_HOST)
     ap.add_argument("--port", type=int, default=C.WEB_PORT)
+    ap.add_argument("--gemini-api-key", default=None, help="Google Gemini API key for assistant summaries")
     a = ap.parse_args()
+    if a.gemini_api_key:
+        os.environ["GEMINI_API_KEY"] = a.gemini_api_key
     setup_logging()
     try:
         cfg = SecurityConfig.from_env()

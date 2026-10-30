@@ -12,7 +12,7 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
-from .gemini import GeminiAssistant, GeminiError
+from ..gemini import GeminiAssistant, GeminiError
 from ..notifications import AlertDelivery, AlertDeliveryError
 from ..routing import ESCALATION_RULE
 from ..text import csv_safe
@@ -205,10 +205,12 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, 
             abort(400)
         result = assistant.ask(message)
         if mode == "gemini":
-            if not gemini.enabled:
+            custom_key = request.headers.get("X-Gemini-API-Key", "").strip()
+            active_gemini = GeminiAssistant(api_key=custom_key) if custom_key else gemini
+            if not active_gemini.enabled:
                 return jsonify(error="Gemini mode is not configured"), 503
             try:
-                result["llm_summary"] = gemini.summarize(result, tuple(getattr(state, "store_name", {}).values()))
+                result["llm_summary"] = active_gemini.summarize(result, tuple(getattr(state, "store_name", {}).values()))
             except GeminiError:
                 return jsonify(error="Gemini summary is unavailable"), 502
         return jsonify(result)

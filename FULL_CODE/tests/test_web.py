@@ -211,6 +211,7 @@ def test_frontend_never_uses_html_injection():
     from pathlib import Path
 
     js = (Path(__file__).resolve().parents[1] / "src/voice_of_store/web/static/app.js").read_text()
+    assert 'credentials: "same-origin"' in js
     for bad in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", 'setTimeout("'):
         assert bad not in js, bad
     html = (Path(__file__).resolve().parents[1] / "src/voice_of_store/web/static/index.html").read_text()
