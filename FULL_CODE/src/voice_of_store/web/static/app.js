@@ -915,11 +915,11 @@ async function prepareAlertBatch() {
   box.replaceChildren(
     el("section", { class: "card" },
       el("h3", { class: "card-title" }, "Review Alert Email Before Approval"),
-      el("p", { class: "sub-meta" }, "To: " + preview.recipients.join(", ") + " · " + preview.flag_count + " flag(s) · Week " + week),
+      el("p", { class: "sub-meta" }, "To: " + preview.recipients.join(", ") + " \xb7 " + preview.flag_count + " flag(s) \xb7 Week " + week),
       el("p", { class: "sub-meta" }, "Feedback quotes are excluded. These signals are unverified and require operational review."),
       ...preview.items.map((item) => el("div", { class: "item" },
         el("b", {}, item.issue + " at " + item.store),
-        el("div", { class: "sub-meta" }, item.region + " · " + item.owner + " · confidence " + item.confidence.toFixed(2)),
+        el("div", { class: "sub-meta" }, item.region + " \xb7 " + item.owner + " \xb7 confidence " + item.confidence.toFixed(2)),
         el("div", { class: "sub-meta" }, item.change),
         el("div", { class: "sub-meta" }, "Next step: " + item.next_step)
       )),
@@ -1419,7 +1419,70 @@ function setupTryPresets() {
   );
 }
 
+
+let TABS_INITIALIZED = false;
+
+function selectTab(btn) {
+  if (!btn) return;
+  const tabs = [...document.querySelectorAll(".sidebar-nav button")];
+  tabs.forEach((x) => {
+    const isTarget = x === btn;
+    x.setAttribute("aria-selected", isTarget ? "true" : "false");
+    x.tabIndex = isTarget ? 0 : -1;
+  });
+
+  const viewName = btn.dataset.view;
+  const allViews = ["overview", "brief", "emerging", "stores", "queue", "ho", "ask", "try", "precision"];
+  allViews.forEach((v) => {
+    const section = $("view-" + v);
+    if (section) section.hidden = v !== viewName;
+  });
+
+  const titleSpan = $("page-title");
+  if (titleSpan) {
+    const label = btn.querySelector("span");
+    if (label) titleSpan.textContent = label.textContent;
+  }
+
+  const sidebar = $("sidebar");
+  if (sidebar) sidebar.classList.remove("open");
+
+  if (viewName === "overview") showOverview().catch(showErr);
+  else if (viewName === "brief") showBrief().catch(showErr);
+  else if (viewName === "emerging") showFlags().catch(showErr);
+  else if (viewName === "stores") showStore().catch(showErr);
+  else if (viewName === "queue") showQueue().catch(showErr);
+  else if (viewName === "ho") showHeadOffice().catch(showErr);
+  else if (viewName === "precision") showPrecision().catch(showErr);
+  else if (viewName === "ask") {
+    const q = $("question");
+    if (q) q.focus();
+  }
+}
+
+function setupTabs() {
+  if (TABS_INITIALIZED) return;
+  TABS_INITIALIZED = true;
+  const tabs = [...document.querySelectorAll(".sidebar-nav button")];
+  tabs.forEach((btn, i) => {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      selectTab(btn);
+    });
+    btn.addEventListener("keydown", (ev) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      if (ev.key === "Home" || ev.key === "End" || step) {
+        ev.preventDefault();
+        const j = ev.key === "Home" ? 0 : ev.key === "End" ? tabs.length - 1 : (i + step + tabs.length) % tabs.length;
+        tabs[j].focus();
+        selectTab(tabs[j]);
+      }
+    });
+  });
+}
+
 async function init() {
+  setupTabs();
   META = await api("/api/meta");
 
   // Fill dropdowns
@@ -1467,12 +1530,14 @@ async function init() {
   if ($("ov-policy-text")) $("ov-policy-text").textContent = META.escalation_rule;
 
   // Search store input
-  $("storefilter").addEventListener("input", () => {
-    const q = $("storefilter").value.trim().toLowerCase();
-    const hit = META.stores.filter((s) => !q || (s.name + " " + s.region).toLowerCase().includes(q));
-    fill($("store"), hit.map((s) => s.id), storeLabel);
-    if (hit.length) showStore().catch(showErr);
-  });
+  if ($("storefilter")) {
+    $("storefilter").addEventListener("input", () => {
+      const q = $("storefilter").value.trim().toLowerCase();
+      const hit = META.stores.filter((s) => !q || (s.name + " " + s.region).toLowerCase().includes(q));
+      fill($("store"), hit.map((s) => s.id), storeLabel);
+      if (hit.length) showStore().catch(showErr);
+    });
+  }
 
   $("store").addEventListener("change", () => showStore().catch(showErr));
   $("sweek").addEventListener("change", () => showStore().catch(showErr));
@@ -1530,55 +1595,10 @@ async function init() {
   ]);
 
   setupTryPresets();
+  initHeadOffice();
 
-  // Tab switching
-  const tabs = [...document.querySelectorAll(".sidebar-nav button")];
-  const selectTab = (btn) => {
-    tabs.forEach((x) => {
-      const isTarget = x === btn;
-      x.setAttribute("aria-selected", isTarget ? "true" : "false");
-      x.tabIndex = isTarget ? 0 : -1;
-    });
-
-    const viewName = btn.dataset.view;
-    const allViews = ["overview", "brief", "emerging", "stores", "queue", "ask", "try", "precision"];
-    allViews.forEach((v) => {
-      const section = $("view-" + v);
-      if (section) section.hidden = v !== viewName;
-    });
-
-    // Update header title
-    const titleSpan = $("page-title");
-    if (titleSpan) {
-      const label = btn.querySelector("span");
-      if (label) titleSpan.textContent = label.textContent;
-    }
-
-    // Close mobile sidebar upon selection
-    $("sidebar").classList.remove("open");
-
-    // Load content for active tab
-    if (viewName === "overview") showOverview().catch(showErr);
-    else if (viewName === "brief") showBrief().catch(showErr);
-    else if (viewName === "emerging") showFlags().catch(showErr);
-    else if (viewName === "stores") showStore().catch(showErr);
-    else if (viewName === "queue") showQueue().catch(showErr);
-    else if (viewName === "precision") showPrecision().catch(showErr);
-    else if (viewName === "ask") $("question").focus();
-  };
-
-  tabs.forEach((btn, i) => {
-    btn.addEventListener("click", () => selectTab(btn));
-    btn.addEventListener("keydown", (ev) => {
-      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
-      if (ev.key === "Home" || ev.key === "End" || step) {
-        ev.preventDefault();
-        const j = ev.key === "Home" ? 0 : ev.key === "End" ? tabs.length - 1 : (i + step + tabs.length) % tabs.length;
-        tabs[j].focus();
-        selectTab(tabs[j]);
-      }
-    });
-  });
+  // Tab switching active
+  setupTabs();
 
   // Try form submission
   $("tryform").addEventListener("submit", async (ev) => {
@@ -1623,6 +1643,1086 @@ async function init() {
 
   // Default initial load
   await showOverview();
+}
+
+
+// ============================================================================
+// HEAD OFFICE CONTROL CENTER & RESOLUTION MANAGEMENT
+// ============================================================================
+
+let CURRENT_HO_SUB = "overview";
+let HO_INITIALIZED = false;
+
+function getHoUserContext() {
+  const roleSel = $("ho-role-select");
+  const val = roleSel ? roleSel.value : "head_office_admin";
+  let role = val;
+  let dept = "";
+  let region = "";
+  let storeId = "";
+
+  if (val.startsWith("department_manager:")) {
+    role = "department_manager";
+    dept = val.split(":")[1];
+  } else if (val.startsWith("department_member:")) {
+    role = "department_member";
+    dept = val.split(":")[1];
+  } else if (val.startsWith("regional_manager:")) {
+    role = "regional_manager";
+    region = val.split(":")[1];
+  } else if (val.startsWith("store_owner:") || val.startsWith("store_manager:")) {
+    role = "store_owner";
+    storeId = val.split(":")[1];
+  }
+  return { role, dept, region, storeId, raw: val };
+}
+
+function updateHoStoreDropdown() {
+  const storeSel = $("ho-filter-store");
+  if (!storeSel || !META || !META.stores) return;
+  const regVal = $("ho-filter-region") ? $("ho-filter-region").value : "";
+  const fmtVal = $("ho-filter-format") ? $("ho-filter-format").value : "";
+  const prevVal = storeSel.value;
+
+  storeSel.replaceChildren(el("option", { value: "" }, "All Stores"));
+  META.stores.forEach((s) => {
+    if (regVal && s.region !== regVal) return;
+    if (fmtVal) {
+      if (fmtVal.includes("Hyper") && !s.name.includes("Hyper")) return;
+      if (fmtVal.includes("Market") && !s.name.includes("Market")) return;
+      if (fmtVal.includes("Express") && !s.name.includes("Express")) return;
+    }
+    storeSel.appendChild(el("option", { value: s.id }, s.name + " (" + s.region + ")"));
+  });
+
+  if (prevVal && Array.from(storeSel.options).some((o) => o.value === prevVal)) {
+    storeSel.value = prevVal;
+  }
+}
+
+function getHoFilterQueryParams() {
+  const searchVal = ($("ho-search") ? $("ho-search").value : "").trim();
+  const formatVal = $("ho-filter-format") ? $("ho-filter-format").value : "";
+  const regionVal = $("ho-filter-region") ? $("ho-filter-region").value : "";
+  const storeVal = $("ho-filter-store") ? $("ho-filter-store").value : "";
+  const catVal = $("ho-filter-cat") ? $("ho-filter-cat").value : "";
+  const resVal = $("ho-filter-resolution") ? $("ho-filter-resolution").value : "";
+  const deptVal = $("ho-filter-dept") ? $("ho-filter-dept").value : "";
+  const sevVal = $("ho-filter-sev") ? $("ho-filter-sev").value : "";
+  const statusVal = $("ho-filter-status") ? $("ho-filter-status").value : "";
+
+  return new URLSearchParams({
+    search: searchVal,
+    store_format: formatVal,
+    region: regionVal,
+    store_id: storeVal,
+    category: catVal,
+    resolution_status: resVal,
+    department: deptVal,
+    severity: sevVal,
+    status: statusVal
+  });
+}
+
+async function hoApi(path, opts = {}) {
+  const ctx = getHoUserContext();
+  const headers = Object.assign(
+    {
+      "Content-Type": "application/json",
+      "X-User-Role": ctx.role,
+      "X-User-Dept": ctx.dept || "",
+      "X-User-Region": ctx.region || "",
+      "X-User-Store": ctx.storeId || "",
+      "X-User-Id": "usr_" + (ctx.dept ? ctx.dept.toLowerCase().replace(/\s+/g, "_") : ctx.role)
+    },
+    opts.headers || {}
+  );
+  return api(path, Object.assign({}, opts, { headers }));
+}
+
+function initHeadOffice() {
+  if (HO_INITIALIZED) return;
+  HO_INITIALIZED = true;
+
+  const subnavBtns = document.querySelectorAll(".ho-subnav-btn");
+  subnavBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      subnavBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      CURRENT_HO_SUB = btn.dataset.sub || "overview";
+      renderHoView().catch(showErr);
+    });
+  });
+
+  ["ho-search", "ho-filter-format", "ho-filter-region", "ho-filter-store", "ho-filter-cat", "ho-filter-resolution", "ho-filter-dept", "ho-filter-sev", "ho-filter-status"].forEach((id) => {
+    const elem = $(id);
+    if (!elem) return;
+    const evt = id === "ho-search" ? "input" : "change";
+    elem.addEventListener(evt, () => {
+      renderHoView().catch(showErr);
+    });
+  });
+
+  const refreshBtn = $("ho-btn-refresh");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => renderHoView().catch(showErr));
+  }
+
+  const regElem = $("ho-filter-region");
+  if (regElem) {
+    regElem.addEventListener("change", () => {
+      updateHoStoreDropdown();
+      renderHoView().catch(showErr);
+    });
+  }
+
+  const fmtElem = $("ho-filter-format");
+  if (fmtElem) {
+    fmtElem.addEventListener("change", () => {
+      updateHoStoreDropdown();
+      renderHoView().catch(showErr);
+    });
+  }
+
+  const resetBtn = $("ho-reset-filters");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      if ($("ho-search")) $("ho-search").value = "";
+      if ($("ho-filter-format")) $("ho-filter-format").value = "";
+      if ($("ho-filter-region")) $("ho-filter-region").value = "";
+      updateHoStoreDropdown();
+      if ($("ho-filter-store")) $("ho-filter-store").value = "";
+      renderHoView().catch(showErr);
+    });
+  }
+
+  const roleSelect = $("ho-role-select");
+  if (roleSelect) {
+    roleSelect.addEventListener("change", () => {
+      const ctx = getHoUserContext();
+      if (ctx.role === "store_owner" && ctx.storeId) {
+        if ($("ho-filter-store")) $("ho-filter-store").value = ctx.storeId;
+      }
+      renderHoView().catch(showErr);
+    });
+  }
+
+  const modalClose = $("ho-modal-close");
+  if (modalClose) {
+    modalClose.addEventListener("click", closeIssueModal);
+  }
+  const modalBackdrop = $("ho-modal-backdrop");
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener("click", (ev) => {
+      if (ev.target === modalBackdrop) closeIssueModal();
+    });
+  }
+}
+
+async function showHeadOffice() {
+  if (!HO_INITIALIZED) initHeadOffice();
+
+  // Populate regions
+  const regSel = $("ho-filter-region");
+  if (regSel && regSel.options.length <= 1 && META && META.regions) {
+    META.regions.forEach((r) => {
+      regSel.appendChild(el("option", { value: r }, r + " Region"));
+    });
+  }
+
+  // Populate stores dynamically based on region & format
+  updateHoStoreDropdown();
+
+  // Populate categories / problem types
+  const catSel = $("ho-filter-cat");
+  if (catSel && catSel.options.length <= 1 && META && META.issue_types) {
+    META.issue_types.forEach((t) => {
+      catSel.appendChild(el("option", { value: t.name }, t.name + " (" + t.owner + ")"));
+    });
+  }
+
+  await renderHoView();
+}
+
+function closeIssueModal() {
+  const b = $("ho-modal-backdrop");
+  if (b) b.hidden = true;
+}
+
+async function renderHoView() {
+  const container = $("ho-content");
+  if (!container) return;
+  container.replaceChildren(el("div", { class: "sub-meta" }, "Loading operational data..."));
+
+  const filtersBar = document.querySelector(".ho-filters-bar");
+  if (filtersBar) {
+    filtersBar.hidden = CURRENT_HO_SUB === "performance" || CURRENT_HO_SUB === "notifications";
+  }
+
+  try {
+    if (CURRENT_HO_SUB === "overview") {
+      await renderHoOverview(container);
+    } else if (CURRENT_HO_SUB === "resolution") {
+      await renderHoStoreResolutionMatrix(container);
+    } else if (CURRENT_HO_SUB === "performance") {
+      await renderHoPerformance(container);
+    } else if (CURRENT_HO_SUB === "notifications") {
+      await renderHoNotifications(container);
+    } else {
+      await renderHoIssuesList(container, CURRENT_HO_SUB);
+    }
+  } catch (err) {
+    container.replaceChildren(
+      el("div", { class: "banner banner-warning" }, "Unable to display view: " + err.message)
+    );
+  }
+}
+
+
+function renderStoreFormatCards(byFormat) {
+  const cards = Object.entries(byFormat).map(([fmtName, stats]) => {
+    let badgeCls = "badge-format-market";
+    if (fmtName.includes("Hyper")) badgeCls = "badge-format-hyper";
+    else if (fmtName.includes("Express")) badgeCls = "badge-format-express";
+
+    const filterBtn = el("button", { class: "btn btn-outline btn-sm" }, "Filter " + fmtName);
+    filterBtn.addEventListener("click", () => {
+      const fSel = $("ho-filter-format");
+      if (fSel) fSel.value = fmtName;
+      updateHoStoreDropdown();
+      renderHoView().catch(showErr);
+    });
+
+    return el(
+      "div",
+      { class: "ho-format-card" },
+      el(
+        "div",
+        { class: "ho-format-header" },
+        el("span", { class: "badge " + badgeCls }, fmtName),
+        el("span", { class: "ho-format-rate" }, stats.resolution_rate + "% Resolved")
+      ),
+      el(
+        "div",
+        { class: "ho-format-stats" },
+        el("div", { class: "ho-format-stat-item" }, "Total: ", el("b", {}, String(stats.total))),
+        el("div", { class: "ho-format-stat-item" }, "Resolved: ", el("b", {}, String(stats.resolved))),
+        el("div", { class: "ho-format-stat-item" }, "Awaiting: ", el("b", {}, String(stats.awaiting))),
+        el("div", { class: "ho-format-stat-item" }, "Unresolved: ", el("b", {}, String(stats.unresolved)))
+      ),
+      el("div", { style: "margin-top: 10px;" }, filterBtn)
+    );
+  });
+  return el("div", { class: "ho-format-grid" }, ...cards);
+}
+
+function renderStoreProblemsTable(issues, summaryTitle) {
+  if (!issues || issues.length === 0) {
+    return el(
+      "div",
+      { class: "card", style: "margin-top: 16px;" },
+      el("h3", { class: "card-title" }, summaryTitle || "Store Problem Resolution Status"),
+      el("div", { class: "sub-meta", style: "padding: 16px 0;" }, "No store problems match the active filters (Store Format, Region, Store).")
+    );
+  }
+
+  const ctx = getHoUserContext();
+  const isStoreOwner = ctx.role === "store_owner";
+  const isAdmin = ctx.role === "head_office_admin";
+
+  const table = el(
+    "table",
+    { class: "ho-table" },
+    el(
+      "thead",
+      {},
+      el(
+        "tr",
+        {},
+        el("th", {}, "Store"),
+        el("th", {}, "Region & Store Type"),
+        el("th", {}, "Problem / AI Category"),
+        el("th", {}, "Severity"),
+        el("th", {}, "Action Taken on Task"),
+        el("th", {}, "Resolution State"),
+        el("th", {}, "SLA Deadline"),
+        el("th", {}, "Action")
+      )
+    ),
+    el(
+      "tbody",
+      {},
+      ...issues.map((iss) => {
+        let inspectLabel = "Inspect Problem";
+        let inspectCls = "btn btn-outline btn-sm";
+        if (isStoreOwner) {
+          inspectLabel = "\U0001f4dd Update Action Taken";
+          inspectCls = "btn btn-primary btn-sm";
+        } else if (isAdmin) {
+          inspectLabel = "\U0001f50e Check Action & Verify";
+          inspectCls = iss.current_status === "RESOLVED_AWAITING_VERIFICATION" ? "btn btn-primary btn-sm" : "btn btn-outline btn-sm";
+        }
+
+        const inspectBtn = el("button", { class: inspectCls }, inspectLabel);
+        inspectBtn.addEventListener("click", () => openIssueModal(iss.id));
+
+        // Action Taken Column
+        const hasAction = Boolean(iss.latest_action_desc || iss.resolution_summary);
+        let actionBadge;
+        let actionDesc;
+        let actionMeta;
+
+        if (hasAction) {
+          actionBadge = el("span", { class: "badge badge-action-taken" }, "\u2713 Action Taken");
+          const text = iss.latest_action_desc || iss.resolution_summary || "";
+          actionDesc = el("div", { class: "ho-action-snippet", title: text }, text);
+          const author = iss.latest_action_by || "Store Owner";
+          const time = iss.latest_action_at ? formatShortDate(iss.latest_action_at.slice(0, 10)) : "Logged";
+          actionMeta = el("div", { class: "sub-meta" }, author + " \u2022 " + time);
+        } else {
+          actionBadge = el("span", { class: "badge badge-action-needed" }, "\u23f3 No Action Yet");
+          actionDesc = el("div", { class: "sub-meta" }, "Awaiting store corrective action");
+          actionMeta = null;
+        }
+
+        // Resolution State Column
+        let resBadge;
+        let resDetail;
+        if (iss.current_status === "VERIFIED_CLOSED") {
+          resBadge = el("span", { class: "badge badge-res-verified" }, "\u2713 SOLVED (Verified by HO)");
+          resDetail = el("div", { class: "sub-meta" }, "Verified by Head Office");
+        } else if (iss.current_status === "RESOLVED_AWAITING_VERIFICATION") {
+          resBadge = el("span", { class: "badge badge-res-awaiting" }, "\u23f1\ufe0f CLAIMED RESOLVED");
+          resDetail = el("div", { class: "sub-meta" }, "Awaiting HO Verification");
+        } else if (iss.current_status === "PENDING") {
+          resBadge = el("span", { class: "badge badge-res-pending" }, "\u23f8\ufe0f BLOCKED (PENDING)");
+          resDetail = el("div", { class: "sub-meta" }, iss.pending_reason ? "Reason: " + iss.pending_reason : "");
+        } else if (iss.is_overdue) {
+          resBadge = el("span", { class: "badge badge-res-overdue" }, "\u26a0\ufe0f UNRESOLVED (OVERDUE)");
+          resDetail = el("div", { class: "sub-meta" }, "SLA Breached");
+        } else {
+          resBadge = el("span", { class: "badge badge-res-unresolved" }, "\u2699\ufe0f IN PROGRESS");
+          resDetail = el("div", { class: "sub-meta" }, iss.current_status.replace(/_/g, " "));
+        }
+
+        let fmtCls = "badge-format-market";
+        const fmt = iss.store_format || "Saffron Market";
+        if (fmt.includes("Hyper")) fmtCls = "badge-format-hyper";
+        else if (fmt.includes("Express")) fmtCls = "badge-format-express";
+
+        return el(
+          "tr",
+          {},
+          el("td", {},
+            el("b", {}, iss.store_name),
+            el("div", { class: "sub-meta" }, iss.store_id)
+          ),
+          el("td", {},
+            el("span", { class: "badge " + fmtCls }, fmt),
+            el("div", { class: "sub-meta" }, iss.region + " Region")
+          ),
+          el("td", {},
+            el("div", { class: "ho-cell-title" }, iss.issue_category),
+            el("div", { class: "sub-meta" }, iss.title)
+          ),
+          el("td", {},
+            el("span", { class: "badge badge-" + iss.severity }, iss.severity),
+            el("div", { class: "sub-meta" }, iss.owning_department_id)
+          ),
+          el("td", {}, actionBadge, actionDesc, actionMeta),
+          el("td", {}, resBadge, resDetail),
+          el("td", {},
+            el("div", {}, iss.resolution_deadline ? formatShortDate(iss.resolution_deadline.slice(0, 10)) : "Standard"),
+            iss.is_overdue ? el("span", { class: "badge badge-critical" }, "OVERDUE") : el("span", { class: "sub-meta" }, "On Track")
+          ),
+          el("td", {}, inspectBtn)
+        );
+      })
+    )
+  );
+
+  return el(
+    "div",
+    { class: "card", style: "margin-top: 16px;" },
+    el(
+      "div",
+      { class: "card-header-row" },
+      el("h3", { class: "card-title" }, summaryTitle || "Store Problem Resolution & Action Log"),
+      el("div", { class: "sub-meta" }, "Showing " + issues.length + " store problems matching active filters")
+    ),
+    el(
+      "p",
+      { class: "sub-meta" },
+      "Direct end-to-end tracking: Store owners update corrective actions taken, and Head Office verifies resolution before closure."
+    ),
+    table
+  );
+}
+
+async function renderHoOverview(container) {
+  const kpis = await hoApi("/api/ho/kpis");
+  const elements = [];
+
+  const counts = kpis.status_counts || kpis.counts || {};
+  const total = kpis.total_issues !== undefined ? kpis.total_issues : (counts.total || 0);
+  const overdue = kpis.overdue_count !== undefined ? kpis.overdue_count : (counts.overdue || 0);
+  const reopened = kpis.reopened_count !== undefined ? kpis.reopened_count : (counts.reopened || 0);
+  const critSafety = kpis.critical_safety_count !== undefined ? kpis.critical_safety_count : (counts.critical_safety || 0);
+
+  if (critSafety > 0) {
+    elements.push(
+      el(
+        "div",
+        { class: "banner banner-critical" },
+        el("b", {}, "CRITICAL ESCALATION POLICY ACTIVE: "),
+        critSafety + " critical safety issues detected. Per corporate policy, food and store safety incidents trigger immediate head office escalation regardless of incident volume."
+      )
+    );
+  }
+
+  // Active Role Banner
+  const ctx = getHoUserContext();
+  let roleNotice = null;
+  if (ctx.role === "store_owner") {
+    roleNotice = el(
+      "div",
+      { class: "banner banner-info", style: "margin-bottom: 14px;" },
+      el("b", {}, "\U0001f3ea STORE OWNER PORTAL: "),
+      "Logged in as Store Owner" + (ctx.storeId ? " (" + ctx.storeId + ")" : "") + ". You can log corrective actions taken on your store's problems and submit them for Head Office verification."
+    );
+  } else if (ctx.role === "head_office_admin") {
+    roleNotice = el(
+      "div",
+      { class: "banner banner-info", style: "margin-bottom: 14px;" },
+      el("b", {}, "\U0001f3e2 HEAD OFFICE CONTROL CENTER: "),
+      "Logged in as Head Office Administrator. You can monitor problems across all stores, check actions taken by store owners, and verify resolution closures."
+    );
+  }
+  if (roleNotice) elements.push(roleNotice);
+
+  const kpiItems = [
+    { label: "Total Problems", val: total, sub: "Across monitored stores" },
+    { label: "Verified Solved", val: counts.VERIFIED_CLOSED || counts.verified_closed || 0, sub: "Verified by HO", isGreen: true },
+    { label: "Awaiting HO Verification", val: counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0, sub: "Claimed resolved by store", isAmber: (counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0) > 0 },
+    { label: "In Progress", val: counts.IN_PROGRESS || counts.in_progress || 0, sub: "Store action ongoing" },
+    { label: "Blocked / Pending", val: counts.PENDING || counts.pending || 0, sub: "Waiting on parts/approval" },
+    { label: "Overdue", val: overdue, sub: "SLA target breached", isOverdue: overdue > 0 }
+  ];
+
+  const kpiGrid = el(
+    "div",
+    { class: "ho-kpi-grid" },
+    ...kpiItems.map((item) =>
+      el(
+        "div",
+        { class: "ho-kpi-card" + (item.isOverdue ? " ho-kpi-card-overdue" : item.isGreen ? " ho-kpi-card-verified" : "") },
+        el("div", { class: "ho-kpi-val" }, String(item.val)),
+        el("div", { class: "ho-kpi-label" }, item.label),
+        el("div", { class: "ho-kpi-sub" }, item.sub)
+      )
+    )
+  );
+  elements.push(kpiGrid);
+
+  // Fetch problems matching active filters (Region, Format, Store, Search)
+  const q = getHoFilterQueryParams();
+  const matrixData = await hoApi("/api/ho/resolution_matrix?" + q.toString());
+
+  // Store format cards
+  if (matrixData.by_format && Object.keys(matrixData.by_format).length > 0) {
+    elements.push(renderStoreFormatCards(matrixData.by_format));
+  }
+
+  // Display ALL THE PROBLEMS DOWN THERE!
+  elements.push(renderStoreProblemsTable(matrixData.issues || [], "Store Problem Resolution & Action Log"));
+
+  container.replaceChildren(...elements);
+}
+
+
+async function renderHoIssuesList(container, viewKey) {
+  const q = getHoFilterQueryParams();
+  q.set("view", viewKey);
+
+  const res = await hoApi("/api/ho/issues?" + q.toString());
+  const issues = res.issues || [];
+
+  const viewTitles = {
+    all: "All Tracked Store Problems",
+    dept: "My Department's Assigned Problems",
+    pending: "Pending / Blocked Store Problems",
+    overdue: "SLA Overdue Escalated Problems",
+    verification: "Problems Awaiting Head Office Verification",
+    resolved: "Verified & Closed Store Problems"
+  };
+  const title = viewTitles[viewKey] || ("Store Problems (" + viewKey.replace(/_/g, " ") + ")");
+
+  const problemsTable = renderStoreProblemsTable(issues, title);
+  container.replaceChildren(problemsTable);
+}
+
+async function renderHoPerformance(container) {
+  const perf = await hoApi("/api/ho/performance");
+  const depts = perf.departments || {};
+
+  const table = el(
+    "table",
+    { class: "ho-table" },
+    el(
+      "thead",
+      {},
+      el(
+        "tr",
+        {},
+        el("th", {}, "Department"),
+        el("th", {}, "Total Assigned"),
+        el("th", {}, "Open Issues"),
+        el("th", {}, "Ack Rate"),
+        el("th", {}, "Resolution Rate"),
+        el("th", {}, "Overdue"),
+        el("th", {}, "Avg Ack (hrs)"),
+        el("th", {}, "Avg Res (hrs)"),
+        el("th", {}, "Reopened"),
+        el("th", {}, "Rejected Verifications")
+      )
+    ),
+    el(
+      "tbody",
+      {},
+      ...Object.entries(depts).map(([deptName, d]) => {
+        return el(
+          "tr",
+          {},
+          el("td", {}, el("b", {}, deptName)),
+          el("td", {}, String(d.total_assigned)),
+          el("td", {}, String(d.open_issues)),
+          el("td", {}, d.acknowledgement_rate + "%"),
+          el("td", {}, d.resolution_rate + "%"),
+          el("td", {}, d.overdue_count > 0 ? el("span", { class: "badge badge-critical" }, String(d.overdue_count)) : "0"),
+          el("td", {}, String(d.avg_ack_hours)),
+          el("td", {}, String(d.avg_res_hours)),
+          el("td", {}, String(d.reopened_count)),
+          el("td", {}, d.verification_rejections > 0 ? el("span", { class: "badge badge-high" }, String(d.verification_rejections)) : "0")
+        );
+      })
+    )
+  );
+
+  container.replaceChildren(
+    el("div", { class: "card" },
+      el("h3", { class: "card-title" }, "Department Operational Performance & SLA Compliance"),
+      el("p", { class: "sub-meta" }, "Operational velocity, acknowledgment timeliness, and first-time verification quality metrics per department."),
+      table
+    )
+  );
+}
+
+async function renderHoNotifications(container) {
+  const res = await hoApi("/api/ho/notifications");
+  const list = res.notifications || [];
+
+  if (list.length === 0) {
+    container.replaceChildren(
+      el("div", { class: "sub-meta" }, "No logged notification events.")
+    );
+    return;
+  }
+
+  const cards = list.map((n) => {
+    const card = el(
+      "div",
+      { class: "ho-notification-card" },
+      el(
+        "div",
+        { class: "ho-notification-header" },
+        el("span", { class: "badge badge-" + (n.severity || "low") }, n.severity || "info"),
+        el("b", {}, n.title),
+        el("span", { class: "sub-meta" }, n.created_at || "")
+      ),
+      el("div", { class: "ho-notification-msg" }, n.message)
+    );
+
+    if (n.issue_id) {
+      const btn = el("button", { class: "btn btn-outline btn-sm" }, "Inspect Issue " + n.issue_id);
+      btn.addEventListener("click", () => openIssueModal(n.issue_id));
+      card.appendChild(btn);
+    }
+    return card;
+  });
+
+  container.replaceChildren(
+    el("div", { class: "card" },
+      el("h3", { class: "card-title" }, "Escalation & Notification Log"),
+      el("p", { class: "sub-meta" }, "System-generated escalations, SLA warnings, and department updates."),
+      el("div", { class: "ho-notifications-list" }, ...cards)
+    )
+  );
+}
+
+async function openIssueModal(issueId) {
+  const backdrop = $("ho-modal-backdrop");
+  const modalBody = $("ho-modal-body");
+  if (!backdrop || !modalBody) return;
+
+  modalBody.replaceChildren(el("div", { class: "sub-meta" }, "Loading issue details..."));
+  backdrop.hidden = false;
+
+  try {
+    const data = await hoApi("/api/ho/issue/" + issueId);
+    const iss = data.issue || data;
+    const history = data.history || [];
+    const actions = data.actions || [];
+    const evidence = data.evidence || [];
+    const verifs = data.verifications || [];
+
+    // Header updates
+    const badge = $("ho-modal-status-badge");
+    if (badge) {
+      badge.textContent = iss.current_status;
+      badge.className = "ho-status-badge ho-status-" + iss.current_status.toLowerCase().replace(/_/g, "-");
+    }
+
+    const titleEl = $("ho-modal-title");
+    if (titleEl) titleEl.textContent = iss.id + ": " + iss.title;
+
+    const subEl = $("ho-modal-subtitle");
+    if (subEl) {
+      subEl.textContent = "Store: " + iss.store_id + " (" + (iss.region_id || "") + ") \xb7 Owning Dept: " + iss.owning_department_id + " \xb7 Detected: " + iss.first_detected_at;
+    }
+
+    // Lifecycle Stepper
+    const steps = ["NEW", "ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED_AWAITING_VERIFICATION", "VERIFIED_CLOSED"];
+    const currIdx = steps.indexOf(iss.current_status);
+    const isSpecial = iss.current_status === "PENDING" || iss.current_status === "REOPENED";
+
+    const stepper = el(
+      "div",
+      { class: "ho-stepper" },
+      ...steps.map((s, idx) => {
+        let cls = "ho-step";
+        if (s === iss.current_status) cls += " active";
+        else if (currIdx !== -1 && idx < currIdx) cls += " completed";
+        const label = s.replace(/_/g, " ");
+        return el("div", { class: cls }, el("span", { class: "ho-step-dot" }), el("span", { class: "ho-step-label" }, label));
+      })
+    );
+
+    // Meta details grid
+    const metaGrid = el(
+      "div",
+      { class: "ho-meta-grid" },
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Severity:"), el("span", { class: "badge badge-" + iss.severity }, iss.severity)),
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Category:"), el("b", {}, iss.issue_category)),
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Department:"), el("b", {}, iss.owning_department_id)),
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Actionability:"), el("span", { class: "badge badge-" + (iss.actionability ? "verified" : "low") }, iss.actionability ? "Actionable" : "Advisory")),
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Resolution Target:"), el("b", {}, iss.resolution_deadline || "Standard")),
+      el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "SLA Status:"), el("span", { class: "badge " + (iss.is_overdue ? "badge-critical" : "badge-low") }, iss.is_overdue ? "OVERDUE (" + iss.overdue_type + ")" : "Within SLA"))
+    );
+
+    // AI Context Box
+    const aiBox = el(
+      "div",
+      { class: "ho-ai-context-box" },
+      el("h4", { class: "ho-section-title" }, "AI Detection & Anomaly Model Intelligence"),
+      el("p", { class: "sub-meta" }, "Distinguishing statistical detector predictions from verified operational facts:"),
+      el("div", { class: "ho-meta-grid" },
+        el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Predicted Category:"), el("span", {}, iss.predicted_category || iss.issue_category)),
+        el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Predicted Severity:"), el("span", {}, iss.predicted_severity || iss.severity)),
+        el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Detector Confidence:"), el("b", {}, String(iss.confidence || "0.92"))),
+        el("div", { class: "ho-meta-item" }, el("span", { class: "ho-meta-k" }, "Source Channel:"), el("span", {}, iss.detection_source || "Voice-of-Store CUSUM"))
+      ),
+      el("div", { class: "ho-anomaly-desc" },
+        el("b", {}, "Anomaly Explanation: "),
+        iss.anomaly_explanation || "Sequential probability ratio test (SPRT) detected sustained complaint rate deviation exceeding Poisson null baseline."
+      )
+    );
+
+    // Corroborating Evidence Feedbacks
+    const evidenceSection = el(
+      "div",
+      { class: "ho-evidence-section" },
+      el("h4", { class: "ho-section-title" }, "Independent Corroborating Evidence (" + evidence.length + " reports)"),
+      el("p", { class: "sub-meta" }, "Customer reviews and staff logs triggering this issue flag:"),
+      ...evidence.map((evItem) =>
+        el(
+          "div",
+          { class: "ho-evidence-quote" },
+          el("div", { class: "ho-evidence-meta" },
+            el("span", { class: "badge badge-owner" }, evItem.evidence_type || "Customer Review"),
+            el("span", { class: "sub-meta" }, evItem.feedback_id ? "ID: " + evItem.feedback_id : ""),
+            el("span", { class: "sub-meta" }, evItem.created_at || "")
+          ),
+          el("div", { class: "ho-evidence-text" }, "\"" + (evItem.evidence_text || evItem.evidence_reference || "Complaint logged") + "\"")
+        )
+      )
+    );
+
+    // Status Audit History
+    const historySection = el(
+      "div",
+      { class: "ho-history-section" },
+      el("h4", { class: "ho-section-title" }, "Immutable Audit History & Lifecycle Transitions"),
+      el(
+        "div",
+        { class: "ho-timeline" },
+        ...history.map((h) =>
+          el(
+            "div",
+            { class: "ho-timeline-item" },
+            el("div", { class: "ho-timeline-dot" }),
+            el("div", { class: "ho-timeline-content" },
+              el("div", { class: "ho-timeline-header" },
+                el("b", {}, (h.previous_status || "START") + " \u2192 " + h.new_status),
+                el("span", { class: "sub-meta" }, h.created_at || "")
+              ),
+              el("div", { class: "sub-meta" }, "Changed by: " + (h.changed_by || "System")),
+              h.reason ? el("div", { class: "ho-timeline-reason" }, "Reason / Notes: " + h.reason) : null
+            )
+          )
+        )
+      )
+    );
+
+    // Action Taken Overview Card
+    const latestActionDesc = actions.length > 0 ? actions[0].action_description : (iss.resolution_summary || "");
+    const latestActionBy = actions.length > 0 ? actions[0].user_id : (iss.store_name || "Store Owner");
+    const latestActionTime = actions.length > 0 ? actions[0].created_at : iss.resolved_at;
+
+    const actionOverviewCard = el(
+      "div",
+      { class: "card", style: "border-left: 4px solid " + (latestActionDesc ? "#10b981" : "#f59e0b") },
+      el("h4", { class: "ho-section-title" }, "Action Taken on Problem"),
+      latestActionDesc
+        ? el("div", {},
+            el("div", { style: "font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 6px;" }, latestActionDesc),
+            el("div", { class: "sub-meta" }, "Logged by: " + latestActionBy + " \u2022 " + (latestActionTime || "Recent")),
+            actions.length > 0 && actions[0].blockers ? el("div", { class: "badge badge-critical", style: "margin-top: 6px;" }, "Blocker: " + actions[0].blockers) : null
+          )
+        : el("div", { class: "sub-meta" }, "\u23f3 No corrective action recorded yet by store owner. Awaiting store response.")
+    );
+
+    // Department & Store Owner Action Form / Verification Controls
+    const actionForm = el("div", { class: "ho-action-form-section" });
+    const ctx = getHoUserContext();
+    const isAdmin = ctx.role === "head_office_admin";
+    const isStoreOwner = ctx.role === "store_owner";
+    const isDeptManager = ctx.role === "department_manager" || isAdmin;
+
+    // STORE OWNER ACTION FORM
+    if (iss.current_status !== "VERIFIED_CLOSED" && isStoreOwner) {
+      const storeActionCard = el("div", { class: "card", style: "border: 1px solid #bbf7d0; background: #f0fdf4;" });
+      storeActionCard.appendChild(el("h4", { class: "ho-section-title", style: "color: #166534;" }, "\U0001f3ea Store Owner Action Update (" + (iss.store_name || iss.store_id) + ")"));
+      storeActionCard.appendChild(
+        el("p", { class: "sub-meta" }, "Record corrective action taken at your store. Once work is completed, submit for Head Office verification. Only Head Office can officially verify and close issues.")
+      );
+
+      const storeStatusSel = el(
+        "select",
+        { id: "ho-store-target-status", class: "ho-select" },
+        el("option", { value: "RESOLVED_AWAITING_VERIFICATION" }, "\u2713 Action Completed \u2014 Submit for Head Office Verification"),
+        el("option", { value: "IN_PROGRESS" }, "\u2699\ufe0f Action In Progress (Repair / Work underway)"),
+        el("option", { value: "PENDING" }, "\u23f8\ufe0f Blocked (Waiting for replacement parts / external contractor)")
+      );
+
+      const storeActionDesc = el("textarea", {
+        id: "ho-store-action-desc",
+        class: "ho-textarea",
+        rows: "3",
+        placeholder: "Describe the specific corrective action taken at your store (e.g. Technician replaced chiller compressor coil; holding temperature restored to 3.5\xb0C; staff retrained)..."
+      });
+
+      const storeBlockerInput = el("input", {
+        type: "text",
+        id: "ho-store-blocker",
+        class: "ho-input",
+        placeholder: "Required only if Blocked (e.g. Waiting for manufacturer part delivery)"
+      });
+
+      const storeSaveBtn = el("button", { class: "btn btn-primary", type: "button" }, "\U0001f4be Submit Store Action & Update Head Office");
+      storeSaveBtn.addEventListener("click", async () => {
+        const desc = storeActionDesc.value.trim();
+        if (!desc) {
+          alert("A description of the action taken is required.");
+          return;
+        }
+        const targetSt = storeStatusSel.value;
+        const blk = storeBlockerInput.value.trim();
+        if (targetSt === "PENDING" && !blk) {
+          alert("Please state the blocker reason if action is marked Blocked/Pending.");
+          return;
+        }
+
+        try {
+          storeSaveBtn.disabled = true;
+          await hoApi("/api/ho/issue/" + iss.id + "/action", {
+            method: "POST",
+            body: JSON.stringify({
+              action_description: desc,
+              target_status: targetSt,
+              user_role: "store_owner",
+              user_id: ctx.storeId ? "Store Owner (" + ctx.storeId + ")" : "Store Owner (" + iss.store_id + ")",
+              department: "Store Operations",
+              progress_notes: desc,
+              blockers: blk
+            })
+          });
+          alert("Action saved successfully! Status updated to " + targetSt.replace(/_/g, " ") + " and reflected in Head Office.");
+          await openIssueModal(iss.id);
+          renderHoView().catch(showErr);
+        } catch (err) {
+          alert("Failed to submit store action: " + err.message);
+          storeSaveBtn.disabled = false;
+        }
+      });
+
+      storeActionCard.appendChild(el("div", { class: "ho-form-group" }, el("label", {}, el("b", {}, "Action Status / Outcome:")), storeStatusSel));
+      storeActionCard.appendChild(el("div", { class: "ho-form-group" }, el("label", {}, el("b", {}, "Corrective Action Details (What was done?):")), storeActionDesc));
+      storeActionCard.appendChild(el("div", { class: "ho-form-group" }, el("label", {}, el("b", {}, "Blocker Reason (if Blocked):")), storeBlockerInput));
+      storeActionCard.appendChild(el("div", { class: "ho-form-actions" }, storeSaveBtn));
+      actionForm.appendChild(storeActionCard);
+    }
+
+    // DEPARTMENT / ADMIN TRIAGE CONTROLS
+    const validTransitions = {
+      NEW: ["ASSIGNED", "ACKNOWLEDGED"],
+      ASSIGNED: ["ACKNOWLEDGED", "IN_PROGRESS"],
+      ACKNOWLEDGED: ["IN_PROGRESS", "PENDING"],
+      IN_PROGRESS: ["PENDING", "RESOLVED_AWAITING_VERIFICATION"],
+      PENDING: ["IN_PROGRESS", "RESOLVED_AWAITING_VERIFICATION"],
+      RESOLVED_AWAITING_VERIFICATION: [],
+      VERIFIED_CLOSED: [],
+      REOPENED: ["IN_PROGRESS", "PENDING"]
+    }[iss.current_status] || [];
+
+    if (iss.current_status !== "VERIFIED_CLOSED" && validTransitions.length > 0 && isDeptManager && !isStoreOwner) {
+      const statusSelect = el(
+        "select",
+        { id: "ho-action-status-select", class: "ho-select" },
+        ...validTransitions.map((st) => el("option", { value: st }, st.replace(/_/g, " ")))
+      );
+
+      const actionDescInput = el("input", {
+        type: "text",
+        id: "ho-action-desc",
+        class: "ho-input",
+        placeholder: "e.g. Dispatched technician / Initiated vendor stock replacement"
+      });
+
+      const notesInput = el("textarea", {
+        id: "ho-action-notes",
+        class: "ho-textarea",
+        rows: "2",
+        placeholder: "Investigation findings and corrective action details..."
+      });
+
+      const blockerInput = el("input", {
+        type: "text",
+        id: "ho-action-blocker",
+        class: "ho-input",
+        placeholder: "Required only if status is PENDING (e.g. Waiting for replacement part)"
+      });
+
+      const updateBtn = el("button", { class: "btn btn-primary", type: "button" }, "Submit Department Update");
+      updateBtn.addEventListener("click", async () => {
+        const nextSt = statusSelect.value;
+        const desc = actionDescInput.value.trim() || ("Status changed to " + nextSt);
+        const nts = notesInput.value.trim();
+        const blk = blockerInput.value.trim();
+
+        if (nextSt === "PENDING" && !blk) {
+          alert("A blocker reason is required when placing an issue into PENDING status.");
+          return;
+        }
+
+        try {
+          updateBtn.disabled = true;
+          await hoApi("/api/ho/issue/" + iss.id + "/status", {
+            method: "POST",
+            body: JSON.stringify({
+              new_status: nextSt,
+              reason: blk || nts || desc,
+              action_description: desc,
+              progress_notes: nts
+            })
+          });
+          await openIssueModal(iss.id);
+          renderHoView().catch(showErr);
+        } catch (err) {
+          alert("Update failed: " + err.message);
+          updateBtn.disabled = false;
+        }
+      });
+
+      actionForm.appendChild(
+        el("div", { class: "card" },
+          el("h4", { class: "ho-section-title" }, "Department Action & Investigation Update"),
+          el("p", { class: "sub-meta" }, "Log corrective measures taken by " + iss.owning_department_id + ". Departments cannot self-verify closure; completing work requires Head Office verification."),
+          el("div", { class: "ho-form-group" }, el("label", {}, "Target Status:"), statusSelect),
+          el("div", { class: "ho-form-group" }, el("label", {}, "Corrective Action Description:"), actionDescInput),
+          el("div", { class: "ho-form-group" }, el("label", {}, "Progress Notes:"), notesInput),
+          el("div", { class: "ho-form-group" }, el("label", {}, "Blocker Reason (if Pending):"), blockerInput),
+          el("div", { class: "ho-form-actions" }, updateBtn)
+        )
+      );
+    }
+
+    // Head Office Verification Card (for RESOLVED_AWAITING_VERIFICATION)
+    if (iss.current_status === "RESOLVED_AWAITING_VERIFICATION") {
+      const verifCard = el("div", { class: "card" });
+      verifCard.appendChild(el("h4", { class: "ho-section-title" }, "Head Office Independent Verification"));
+      verifCard.appendChild(
+        el("p", { class: "sub-meta" }, "The department has marked corrective actions complete. Head Office must verify that customer complaints have ceased before closing this incident.")
+      );
+
+      const verifNotes = el("textarea", {
+        id: "ho-verif-notes",
+        class: "ho-textarea",
+        rows: "2",
+        placeholder: "Verification observations, store inspection sign-off, or rejection explanation..."
+      });
+
+      const approveBtn = el("button", { class: "btn btn-primary", type: "button" }, "Approve & Mark Verified Closed");
+      approveBtn.addEventListener("click", async () => {
+        try {
+          approveBtn.disabled = true;
+          await hoApi("/api/ho/issue/" + iss.id + "/verify", {
+            method: "POST",
+            body: JSON.stringify({
+              decision: "approved",
+              verification_notes: verifNotes.value.trim() || "Head Office confirmed corrective action resolution."
+            })
+          });
+          await openIssueModal(iss.id);
+          renderHoView().catch(showErr);
+        } catch (err) {
+          alert("Verification approval failed: " + err.message);
+          approveBtn.disabled = false;
+        }
+      });
+
+      const rejectBtn = el("button", { class: "btn btn-outline", type: "button" }, "Reject & Return to In-Progress");
+      rejectBtn.addEventListener("click", async () => {
+        const rReason = verifNotes.value.trim();
+        if (!rReason) {
+          alert("A rejection explanation is mandatory when rejecting department resolution.");
+          return;
+        }
+        try {
+          rejectBtn.disabled = true;
+          await hoApi("/api/ho/issue/" + iss.id + "/verify", {
+            method: "POST",
+            body: JSON.stringify({
+              decision: "rejected",
+              verification_notes: rReason
+            })
+          });
+          await openIssueModal(iss.id);
+          renderHoView().catch(showErr);
+        } catch (err) {
+          alert("Verification rejection failed: " + err.message);
+          rejectBtn.disabled = false;
+        }
+      });
+
+      verifCard.appendChild(el("div", { class: "ho-form-group" }, el("label", {}, "Verification Notes:"), verifNotes));
+      verifCard.appendChild(el("div", { class: "ho-form-actions" }, approveBtn, rejectBtn));
+      actionForm.appendChild(verifCard);
+    }
+
+    // Reopen Issue Card (for VERIFIED_CLOSED)
+    if (iss.current_status === "VERIFIED_CLOSED" && isAdmin) {
+      const reopenCard = el("div", { class: "card" });
+      reopenCard.appendChild(el("h4", { class: "ho-section-title" }, "Reopen Resolved Incident"));
+      reopenCard.appendChild(
+        el("p", { class: "sub-meta" }, "If new customer complaints or sensor alerts indicate problem recurrence, authorized Head Office administrators can reopen this issue.")
+      );
+
+      const reopenReason = el("input", {
+        type: "text",
+        class: "ho-input",
+        placeholder: "Explain recurrence evidence (e.g. persistent complaints in subsequent week)..."
+      });
+
+      const reopenBtn = el("button", { class: "btn btn-outline", type: "button" }, "Reopen Issue");
+      reopenBtn.addEventListener("click", async () => {
+        const val = reopenReason.value.trim();
+        if (!val) {
+          alert("An explanation is required to reopen a closed issue.");
+          return;
+        }
+        try {
+          reopenBtn.disabled = true;
+          await hoApi("/api/ho/issue/" + iss.id + "/reopen", {
+            method: "POST",
+            body: JSON.stringify({ reason: val })
+          });
+          await openIssueModal(iss.id);
+          renderHoView().catch(showErr);
+        } catch (err) {
+          alert("Reopen failed: " + err.message);
+          reopenBtn.disabled = false;
+        }
+      });
+
+      reopenCard.appendChild(el("div", { class: "ho-form-group" }, el("label", {}, "Recurrence Evidence:"), reopenReason));
+      reopenCard.appendChild(el("div", { class: "ho-form-actions" }, reopenBtn));
+      actionForm.appendChild(reopenCard);
+    }
+
+    modalBody.replaceChildren(stepper, metaGrid, aiBox, evidenceSection, actionOverviewCard, historySection, actionForm);
+  } catch (err) {
+    modalBody.replaceChildren(
+      el("div", { class: "banner banner-warning" }, "Failed to load issue details: " + err.message)
+    );
+  }
+}
+
+
+// ============================================================================
+// STORE-BY-STORE PROBLEM RESOLUTION MATRIX
+// ============================================================================
+
+async function renderHoStoreResolutionMatrix(container) {
+  const q = getHoFilterQueryParams();
+  const res = await hoApi("/api/ho/resolution_matrix?" + q.toString());
+  const summary = res.summary || {};
+  const byFormat = res.by_format || {};
+  const issues = res.issues || [];
+
+  const elements = [];
+
+  const kpiItems = [
+    { label: "Problems Monitored", val: summary.total_problems || 0, sub: "Filtered store problems" },
+    { label: "Verified Resolved", val: summary.verified_resolved || 0, sub: (summary.resolution_rate || 0) + "% resolution rate", isGreen: true },
+    { label: "Awaiting HO Verification", val: summary.awaiting_verification || 0, sub: "Claimed resolved by store", isAmber: (summary.awaiting_verification || 0) > 0 },
+    { label: "Actively In Progress", val: summary.unresolved || 0, sub: "Ongoing investigations" },
+    { label: "Blocked / Pending", val: summary.pending || 0, sub: "Waiting on dependencies" }
+  ];
+
+  const kpiGrid = el(
+    "div",
+    { class: "ho-kpi-grid" },
+    ...kpiItems.map((item) => {
+      let cls = "ho-kpi-card";
+      if (item.isGreen) cls += " ho-kpi-card-verified";
+      return el(
+        "div",
+        { class: cls },
+        el("div", { class: "ho-kpi-val" }, String(item.val)),
+        el("div", { class: "ho-kpi-label" }, item.label),
+        el("div", { class: "ho-kpi-sub" }, item.sub)
+      );
+    })
+  );
+  elements.push(kpiGrid);
+
+  if (byFormat && Object.keys(byFormat).length > 0) {
+    elements.push(renderStoreFormatCards(byFormat));
+  }
+
+  elements.push(renderStoreProblemsTable(issues, "Store-by-Store Problem Resolution & Verification Matrix"));
+
+  container.replaceChildren(...elements);
 }
 
 function showErr(e) {

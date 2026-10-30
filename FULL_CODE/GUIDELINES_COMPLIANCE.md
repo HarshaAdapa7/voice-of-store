@@ -14,11 +14,11 @@ Status: **Met** = done and checked; **Met, not run here** = done but a step coul
 | 2 | UI, routes, business logic, data access in separate modules | Met | `web/static` (UI), `web/server.py` (routes), `web/security.py` (controls), `web/state.py` and `io.py` (data), core logic outside `web/`; the check fails if core code imports the web layer. |
 | 2 | One obvious entry point | Met | `python FULL_CODE/main.py <submission\|briefs\|serve\|detect\|check\|grid>`. `detect.py` stays a script because `detector_cmd.txt` calls it. |
 | 2 | Settings in one config or env vars | Met | Constants in `config.py`; web options in environment variables (`.env.example`). No hard-coded absolute paths, dates or ids (checked by `package_check.py`). |
-| 2 | Database schema and seed files; no DB files committed | N/A | No database is used (CSV in, CSV and HTML out). |
+| 2 | Database schema and seed files; no DB files committed | Met | Supabase PostgreSQL schema in scripts/supabase_schema.sql; sync CLI in scripts/supabase_sync.py; .env git-ignored; no DB files committed. |
 | 3 | No secrets in code; `.env.example` committed; `.env` ignored | Met | `.env.example` lists every variable with dummy or commented values; `.gitignore` lists `.env`; `package_check.py` scans for secret-like strings. No keys exist in the project. |
 | 3 | Never print secrets or personal records in logs or errors | Met | Logs hold method, path, status, time and request id only; errors are generic; `redact()` masks contact details before display (`test_logs_contain_no_user_text`, `test_errors_do_not_leak_internals`). |
 | 4 | Validate every input (users, files, APIs) | Met | Web: allow-lists, type, length and shape checks (`test_classify_rejects_bad_input`, `test_query_parameters_use_allow_lists`, `test_assistant_endpoint_validates_input`, `test_store_endpoint_uses_allow_lists`). Files: `io.load_data` checks columns, ids, timestamps, enums (`test_load_data_rejects_bad_files_with_clear_message`). CLI: dates (`monday_of`). |
-| 4 | Parameterised queries | N/A | No SQL. |
+| 4 | Parameterised queries | Met | Supabase PostgREST client and parameterized queries via db module. |
 | 4 | Server-side permission checks | Met | Optional login on every page and API route, plus an API key for the POST endpoint; checked on the server, not hidden in the UI (`test_login_protects_every_page_and_api`). |
 | 4 | Restrict CORS, debug off, certificate checks on | Met | No CORS headers are sent (same-origin only; cross-origin POSTs are refused); `debug=False`; the app makes no outbound calls. |
 | 4 | No eval, exec, shell or pickle on user input | Met | None used (`test_frontend_never_uses_html_injection`, forbidden-import check in `package_check.py`). |

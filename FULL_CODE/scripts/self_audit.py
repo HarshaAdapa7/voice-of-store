@@ -87,9 +87,9 @@ def static_checks() -> list[Check]:
     out.append(Check("Quality", f"functions at most {MAX_FUNC_LINES} lines", 4, not long_fn, ", ".join(long_fn[:6])))
     out.append(Check("Quality", f"cyclomatic complexity at most {MAX_COMPLEXITY}", 4, not hard_fn, ", ".join(hard_fn[:6])))
     big = [
-        f"{p.name}({len(p.read_text().splitlines())})"
+        f"{p.name}({len(p.read_text(encoding='utf-8', errors='replace').splitlines())})"
         for p in py_files("src")
-        if len(p.read_text().splitlines()) > MAX_MODULE_LINES
+        if len(p.read_text(encoding='utf-8', errors='replace').splitlines()) > MAX_MODULE_LINES
     ]
     out.append(Check("Quality", f"modules at most {MAX_MODULE_LINES} lines", 2, not big, ", ".join(big)))
     out.append(
@@ -116,7 +116,7 @@ def static_checks() -> list[Check]:
         p.name for p, t in text.items() if re.search(r"(api[_-]?key|secret|password)\s*=\s*['\"][A-Za-z0-9+/=_-]{12,}", t, re.I)
     ]
     out.append(Check("Security", "no hard-coded secrets", 5, not secret, ", ".join(secret)))
-    sec = (SRC / "web" / "security.py").read_text()
+    sec = (SRC / "web" / "security.py").read_text(encoding='utf-8', errors='replace')
     for label, pattern in (
         ("constant-time comparisons", "compare_digest"),
         ("scrypt password hashes", "check_password_hash"),
@@ -148,7 +148,7 @@ def layout_checks() -> list[Check]:
             str(top),
         )
     )
-    ign = (ROOT / ".gitignore").read_text()
+    ign = (ROOT / ".gitignore").read_text(encoding='utf-8', errors='replace')
     out.append(
         Check(
             "Guidelines",
@@ -165,11 +165,11 @@ def layout_checks() -> list[Check]:
             (CODE / ".env.example").exists() and not (CODE / ".env").exists(),
         )
     )
-    req = (CODE / "requirements.txt").read_text().splitlines()
+    req = (CODE / "requirements.txt").read_text(encoding='utf-8', errors='replace').splitlines()
     loose = [r for r in req if r and not r.startswith("#") and "==" not in r]
     out.append(Check("Guidelines", "dependencies pinned (lockfile)", 4, len(loose) <= 1, f"unpinned: {loose}"))
     out.append(Check("Guidelines", "LICENSE present", 2, (ROOT / "LICENSE").exists()))
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding='utf-8', errors='replace')
     need = [
         "What it does",
         "How to run",
@@ -187,7 +187,7 @@ def layout_checks() -> list[Check]:
         Check("Guidelines", "README declares AI usage and pre-built code", 3, "AI usage" in readme and "evaluate.py" in readme)
     )
     tests = list((CODE / "tests").glob("test_*.py"))
-    n_tests = sum(len(re.findall(r"^def test_", t.read_text(), re.M)) for t in tests)
+    n_tests = sum(len(re.findall(r"^def test_", t.read_text(encoding='utf-8', errors='replace'), re.M)) for t in tests)
     out.append(
         Check(
             "Guidelines",
@@ -217,7 +217,7 @@ def requirement_checks(data: Path) -> list[Check]:
     out: list[Check] = []
     sub = ROOT / "submission"
     pred, flags = sub / "R5_predictions.csv", sub / "R5_emerging_flags.csv"
-    cmd = (sub / "detector_cmd.txt").read_text().strip() if (sub / "detector_cmd.txt").exists() else ""
+    cmd = (sub / "detector_cmd.txt").read_text(encoding='utf-8', errors='replace').strip() if (sub / "detector_cmd.txt").exists() else ""
     out.append(
         Check(
             "Requirements",
@@ -294,7 +294,7 @@ def requirement_checks(data: Path) -> list[Check]:
     )
     briefs = sorted((ROOT / "out" / "briefs").glob("*/*.html"))
     if len(briefs) >= 65:
-        pages = [b.read_text() for b in briefs]
+        pages = [b.read_text(encoding='utf-8', errors='replace') for b in briefs]
         needs = (
             "Next step",
             "severity",
@@ -323,7 +323,7 @@ def requirement_checks(data: Path) -> list[Check]:
     else:
         out.append(Check("Requirements", "briefs generated (run main.py briefs first)", 10, None, f"{len(briefs)} found"))
     report = ROOT / "out" / "report.html"
-    rep = report.read_text() if report.exists() else ""
+    rep = report.read_text(encoding='utf-8', errors='replace') if report.exists() else ""
     out.append(
         Check(
             "Requirements",
@@ -422,14 +422,14 @@ def originality(pack: Path | None) -> list[Check]:
         toks = re.findall(r"\w+", text)
         return {" ".join(toks[i : i + n]) for i in range(len(toks) - n)}
 
-    base = shingles((pack / "baseline" / "baseline.py").read_text())
+    base = shingles((pack / "baseline" / "baseline.py").read_text(encoding='utf-8', errors='replace'))
     worst = 0.0
     for p in py_files("src") + [CODE / "detect.py"]:
-        mine = shingles(p.read_text())
+        mine = shingles(p.read_text(encoding='utf-8', errors='replace'))
         if mine:
             worst = max(worst, len(mine & base) / len(mine))
     ratio = difflib.SequenceMatcher(
-        None, "".join(p.read_text() for p in py_files("src"))[:60000], (pack / "baseline" / "baseline.py").read_text()
+        None, "".join(p.read_text(encoding='utf-8', errors='replace') for p in py_files("src"))[:60000], (pack / "baseline" / "baseline.py").read_text(encoding='utf-8', errors='replace')
     ).quick_ratio()
     return [
         Check(

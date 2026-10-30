@@ -12,7 +12,12 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
+from ..db import get_db
+from ..issues_db import IssuesDB
+from ..issues_seeder import seed_issues_from_engine
+from ..issues_service import IssuesService
 from .gemini import GeminiAssistant, GeminiError
+from .issues_routes import register_ho_routes
 from ..notifications import AlertDelivery, AlertDeliveryError
 from ..routing import ESCALATION_RULE
 from ..text import csv_safe
@@ -137,6 +142,12 @@ def _core_routes(app: Flask, state: AppState, meta: dict) -> None:
         _only()
         return jsonify(state.report())
 
+    @app.get("/api/db")
+    def get_db_status() -> Response:
+        """Supabase database connection status and available tables."""
+        _only()
+        return jsonify(get_db().check_health())
+
 
 def _view_routes(app: Flask, state: AppState, ok: Allowed) -> None:
     """Read-only views: briefs, flags, series, export and the store page. Every value is checked against `ok`."""
@@ -257,7 +268,9 @@ def _alert_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig,
             abort(400)
         try:
             sent = delivery.send(week, state.flags_for(week), batch_id, approved=True, approved_by=operator)
+            get_db().log_alert_audit(week, batch_id, operator, "delivered", len(sent.get("recipients", [])))
         except AlertDeliveryError as exc:
+            get_db().log_alert_audit(week, batch_id, operator, f"failed: {exc}")
             status = 409 if "changed" in str(exc) or "already attempted" in str(exc) else 503
             return jsonify(error=str(exc)), status
         return jsonify(sent)
@@ -271,6 +284,12 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     meta["assistant_modes"] = {"local": True, "gemini": gemini.enabled}
     meta["alert_delivery_enabled"] = delivery.settings.enabled and bool(cfg.auth_user)
     meta["alert_approval_required"] = True
+    db = get_db()
+    meta["database"] = {
+        "configured": db.config.is_configured,
+        "url": db.config.url,
+        "has_pg_pass": db.config.has_db_password,
+    }
     ok = Allowed(
         channels=frozenset(meta["channels"]),
         types=frozenset(t["id"] for t in meta["issue_types"]),
@@ -282,6 +301,16 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     _view_routes(app, state, ok)
     _post_routes(app, state, ok, cfg, gemini)
     _alert_routes(app, state, ok, cfg, delivery)
+
+    # Initialize and register Head Office Issue Tracking system
+    data_dir = getattr(state, "_data_dir", None)
+    sub_dir = getattr(state, "_submission_dir", None)
+    db_path = (Path(data_dir) / "voice_of_store.db") if data_dir else None
+    issues_db = IssuesDB(db_path)
+    if data_dir and sub_dir and Path(data_dir).is_dir() and Path(sub_dir).is_dir():
+        seed_issues_from_engine(issues_db, Path(data_dir), Path(sub_dir))
+    issues_service = IssuesService(issues_db)
+    register_ho_routes(app, issues_service)
 
 
 def create_app(state: AppState, cfg: SecurityConfig | None = None) -> Flask:

@@ -66,6 +66,16 @@
         </svg>
         <span>Escalation Queue</span>
       </button>
+
+      <span class="nav-section-label">Operations</span>
+      <button role="tab" id="tab-ho" aria-controls="view-ho" tabindex="-1" data-view="ho" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+        </svg>
+        <span>Head Office Control</span>
+      </button>
+
       <span class="nav-section-label">Investigation</span>
       <button role="tab" id="tab-ask" aria-controls="view-ask" tabindex="-1" data-view="ask" aria-selected="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -106,9 +116,26 @@
         </div>
       </div>
       <div class="header-right">
-        <div class="header-badge">
+        <div class="header-role-container">
+          <span class="header-role-label">Active Role:</span>
+          <select id="ho-role-select" class="header-select" aria-label="Simulate User Role">
+            <option value="head_office_admin">Head Office Administrator (Reviewer &amp; Verifier)</option>
+            <option value="store_owner:ST-LZWWE">Store Owner &mdash; Saffron Market Arera Colony (Central)</option>
+            <option value="store_owner:ST-01XF3">Store Owner &mdash; Saffron Hyper Dharampeth (Central)</option>
+            <option value="store_owner:ST-FNN4E">Store Owner &mdash; Saffron Express Mylapore (South)</option>
+            <option value="store_owner:ST-04W6N">Store Owner &mdash; Saffron Market Salt Lake (East)</option>
+            <option value="store_owner:ST-B559H">Store Owner &mdash; Saffron Hyper Koramangala (South)</option>
+            <option value="department_manager:Store Ops">Store Ops Manager</option>
+            <option value="department_manager:Supply Chain">Supply Chain Manager</option>
+            <option value="department_manager:Merchandising">Merchandising Manager</option>
+            <option value="department_member:Store Ops">Store Ops Member</option>
+            <option value="regional_manager:North">Regional Manager (North)</option>
+            <option value="regional_manager:South">Regional Manager (South)</option>
+          </select>
+        </div>
+        <div class="header-badge" id="ho-db-badge">
           <span class="header-badge-dot"></span>
-          <span>Stream Synchronized</span>
+          <span id="ho-db-status-text">Database Active</span>
         </div>
       </div>
     </header>
@@ -139,6 +166,7 @@
         <div id="overview-safety-section"></div>
         <div id="overview-grid"></div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-brief" id="view-brief" hidden>
         <div class="controls-bar">
           <div class="controls-group">
@@ -158,18 +186,12 @@
             </div>
           </div>
           <div class="controls-group">
-            <a id="print" class="btn btn-outline" target="_blank" rel="noopener noreferrer">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                <rect x="6" y="14" width="12" height="8"></rect>
-              </svg>
-              <span>Open Printable Page</span>
-            </a>
+            <a class="btn btn-outline btn-sm" id="brief-print" href="#" target="_blank" rel="noopener">Printable View</a>
           </div>
         </div>
         <div id="brief" aria-live="polite"></div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-emerging" id="view-emerging" hidden>
         <div class="controls-bar">
           <div class="controls-group">
@@ -179,67 +201,46 @@
             </div>
           </div>
           <div class="controls-group">
-            <a id="export" class="btn btn-outline" download>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              <span>Download Flags (CSV)</span>
-            </a>
-            <button id="prepare-alerts" class="btn btn-primary" type="button">Prepare Alert Email</button>
+            <a class="btn btn-outline btn-sm" id="export" href="#">Export CSV</a>
+            <button class="btn btn-primary btn-sm" id="prepare-alerts">Prepare Alerts</button>
           </div>
         </div>
-        <p id="alert-delivery-status" class="sub-meta" aria-live="polite"></p>
+        <div class="sub-meta" id="alert-delivery-status"></div>
         <div id="flags" aria-live="polite"></div>
-        <div id="alert-preview" aria-live="polite"></div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-stores" id="view-stores" hidden>
         <div class="controls-bar">
           <div class="controls-group">
             <div class="control-item">
-              <span class="control-label">Search Store</span>
-              <input id="storefilter" type="search" maxlength="40" autocomplete="off" placeholder="Filter by store name or region...">
+              <span class="control-label">Store</span>
+              <select id="store" aria-label="Store selection"></select>
             </div>
             <div class="control-item">
-              <span class="control-label">Selected Store</span>
-              <select id="store" aria-label="Select store"></select>
-            </div>
-            <div class="control-item">
-              <span class="control-label">Week</span>
-              <select id="sweek" aria-label="Select store week"></select>
+              <span class="control-label">Reporting Week</span>
+              <select id="sweek" aria-label="Store week selection"></select>
             </div>
           </div>
         </div>
-        <div id="storeview" aria-live="polite"></div>
+        <div id="store-content" aria-live="polite"></div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-queue" id="view-queue" hidden>
         <div class="controls-bar">
           <div class="controls-group">
             <div class="control-item">
               <span class="control-label">Region</span>
-              <select id="q-region" aria-label="Filter by region">
-                <option value="ALL">All Regions (Chain-wide)</option>
-              </select>
-            </div>
-            <div class="control-item">
-              <span class="control-label">Reporting Week</span>
-              <select id="q-week" aria-label="Filter by reporting week"></select>
+              <select id="q-region" aria-label="Queue Region Filter"></select>
             </div>
             <div class="control-item">
               <span class="control-label">Owner Function</span>
-              <select id="q-owner" aria-label="Filter by owner">
-                <option value="ALL">All Functions</option>
-                <option value="Store Ops">Store Ops</option>
-                <option value="Supply Chain">Supply Chain</option>
-                <option value="Merchandising">Merchandising</option>
-                <option value="Digital">Digital</option>
-                <option value="HR">HR</option>
+              <select id="q-owner" aria-label="Queue Owner Filter">
+                <option value="ALL">All Owners</option>
               </select>
             </div>
             <div class="control-item">
               <span class="control-label">Severity</span>
-              <select id="q-sev" aria-label="Filter by severity">
+              <select id="q-sev" aria-label="Queue Severity Filter">
                 <option value="ALL">All Severities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -248,24 +249,85 @@
               </select>
             </div>
             <div class="control-item">
-              <span class="control-label">Verification</span>
-              <select id="q-tier" aria-label="Filter by verification tier">
+              <span class="control-label">Verification Tier</span>
+              <select id="q-tier" aria-label="Queue Tier Filter">
                 <option value="ALL">All Tiers</option>
-                <option value="POSSIBLE SYSTEMIC">Possible Systemic</option>
-                <option value="CORROBORATED">Corroborated</option>
-                <option value="UNVERIFIED">Unverified</option>
+                <option value="UNVERIFIED">Unverified Report (1 source)</option>
+                <option value="CORROBORATED">Corroborated Allegation (multi-source)</option>
               </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Reporting Week</span>
+              <select id="q-week" aria-label="Queue Week Filter"></select>
             </div>
           </div>
         </div>
-        <div id="queue-container" aria-live="polite"></div>
+        <div id="queue-content" aria-live="polite"></div>
       </section>
+
+      <!-- HEAD OFFICE CONTROL CENTER -->
+      <section role="tabpanel" aria-labelledby="tab-ho" id="view-ho" hidden>
+        <div class="ho-subnav" role="tablist" aria-label="Head Office Subsections">
+          <button type="button" class="ho-subnav-btn active" data-sub="overview">Overview</button>
+          <button type="button" class="ho-subnav-btn" data-sub="resolution">Store Resolution Matrix</button>
+          <button type="button" class="ho-subnav-btn" data-sub="all">All Issues</button>
+          <button type="button" class="ho-subnav-btn" data-sub="dept">My Department</button>
+          <button type="button" class="ho-subnav-btn" data-sub="pending">Pending Actions</button>
+          <button type="button" class="ho-subnav-btn" data-sub="overdue">Overdue Issues</button>
+          <button type="button" class="ho-subnav-btn" data-sub="verification">Awaiting Verification</button>
+          <button type="button" class="ho-subnav-btn" data-sub="resolved">Resolved Issues</button>
+          <button type="button" class="ho-subnav-btn" data-sub="performance">Department Performance</button>
+          <button type="button" class="ho-subnav-btn" data-sub="notifications">Escalations &amp; Logs</button>
+        </div>
+
+        <div class="controls-bar ho-filters-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Search</span>
+              <input type="text" id="ho-search" class="ho-input" placeholder="Search problem, category, store..." />
+            </div>
+            <div class="control-item">
+              <span class="control-label">Store Format / Type</span>
+              <select id="ho-filter-format" aria-label="Filter by store format">
+                <option value="">All Store Formats</option>
+                <option value="Saffron Hyper">Saffron Hyper (Hypermarket)</option>
+                <option value="Saffron Market">Saffron Market (Supermarket)</option>
+                <option value="Saffron Express">Saffron Express (Convenience)</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Store Region</span>
+              <select id="ho-filter-region" aria-label="Filter by region">
+                <option value="">All Regions</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Store</span>
+              <select id="ho-filter-store" aria-label="Filter by store">
+                <option value="">All Stores</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <button type="button" class="btn btn-outline btn-sm" id="ho-reset-filters">Reset Filters</button>
+            </div>
+          </div>
+          <!-- Hidden secondary filters for API compatibility -->
+          <div id="ho-secondary-filters" hidden>
+            <select id="ho-filter-cat"><option value="">All Categories</option></select>
+            <select id="ho-filter-resolution"><option value="">All Resolution States</option></select>
+            <select id="ho-filter-dept"><option value="">All Departments</option></select>
+            <select id="ho-filter-sev"><option value="">All Severities</option></select>
+            <select id="ho-filter-status"><option value="">All Statuses</option></select>
+          </div>
+        </div>
+
+
+        <div id="ho-content" class="ho-content-container" aria-live="polite"></div>
+      </section>
+
       <section role="tabpanel" aria-labelledby="tab-ask" id="view-ask" hidden>
-        <div class="card">
-          <h2 class="card-title">Store Operations Assistant</h2>
-          <p class="sub-meta">Ask about stores, regions, emerging issues, owners, or escalation policy. Local answers are deterministic; optional Gemini summaries use only the redacted local result, never your question or raw feedback.</p>
-          <div class="chips-container" id="chips"></div>
-          <div class="chat-container" id="chat" role="log" aria-live="polite" aria-label="Investigation Conversation"></div>
+        <div class="chat-container">
+          <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
           <form class="chat-form" id="askform">
             <label class="control-item" for="assistant-mode">
               <span class="control-label">Answer mode</span>
@@ -280,6 +342,7 @@
           </form>
         </div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-try" id="view-try" hidden>
         <div class="card">
           <h2 class="card-title">Classifier Studio: Test Feedback Comment</h2>
@@ -304,12 +367,29 @@
           <div id="result" aria-live="polite"></div>
         </div>
       </section>
+
       <section role="tabpanel" aria-labelledby="tab-precision" id="view-precision" hidden>
         <div id="precision" aria-live="polite"></div>
       </section>
     </main>
   </div>
 </div>
+
+<!-- ISSUE INVESTIGATION DRAWER / MODAL -->
+<div id="ho-modal-backdrop" class="ho-modal-backdrop" hidden>
+  <div class="ho-modal" role="dialog" aria-modal="true" aria-labelledby="ho-modal-title">
+    <div class="ho-modal-header">
+      <div>
+        <div id="ho-modal-status-badge" class="ho-status-badge"></div>
+        <h2 id="ho-modal-title" class="ho-modal-title"></h2>
+        <div id="ho-modal-subtitle" class="ho-modal-subtitle"></div>
+      </div>
+      <button type="button" class="ho-btn-close" id="ho-modal-close" aria-label="Close investigation modal">&times;</button>
+    </div>
+    <div class="ho-modal-body" id="ho-modal-body"></div>
+  </div>
+</div>
+
 <script src="/app.js"></script>
 </body>
 </html>
