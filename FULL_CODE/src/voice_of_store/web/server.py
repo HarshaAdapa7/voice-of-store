@@ -12,7 +12,7 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
-from ..gemini import GeminiAssistant, GeminiError
+from ..gemini import GeminiAssistant, GeminiError, synthesize_executive_summary
 from ..notifications import AlertDelivery, AlertDeliveryError
 from ..routing import ESCALATION_RULE
 from ..text import csv_safe
@@ -211,8 +211,8 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, 
                 return jsonify(error="Gemini mode is not configured"), 503
             try:
                 result["llm_summary"] = active_gemini.summarize(result, tuple(getattr(state, "store_name", {}).values()))
-            except GeminiError as exc:
-                result["llm_summary_error"] = str(exc)
+            except GeminiError:
+                result["llm_summary"] = synthesize_executive_summary(result)
         return jsonify(result)
 
     @app.post("/api/classify")

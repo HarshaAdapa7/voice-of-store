@@ -272,3 +272,7 @@ def test_rising_issue_filter_and_natural_classify(bot):
     assert r_pipe["intent"] == "pipeline" and len(r_pipe["items"]) == 5
     r_q = a.ask("what is in the escalation queue?")
     assert r_q["intent"] == "queue" and "triage" in r_q["reply"]
+    r_pred = a.ask("show our fine tuned data predictions")
+    assert r_pred["intent"] == "predictions" and len(r_pred["items"]) == 2
+    r_fb = a.ask("lookup FB-XYZ99999")
+    assert r_fb["intent"] == "feedback"

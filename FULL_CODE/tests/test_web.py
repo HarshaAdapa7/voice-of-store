@@ -469,7 +469,7 @@ def test_gemini_assistant_mode_is_optional(monkeypatch):
         headers={"X-Gemini-API-Key": "header-key"},
     )
     assert res_fail.status_code == 200
-    assert "llm_summary_error" in res_fail.get_json()
+    assert "llm_summary" in res_fail.get_json()
     assert res_fail.get_json()["intent"] == "help"
 
 

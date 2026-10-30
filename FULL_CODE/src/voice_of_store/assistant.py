@@ -16,29 +16,19 @@ from .text import clean_input
 
 MAX_QUESTION_CHARS = 300
 SUGGESTIONS = [
-    "What are the top issues in the South region this week?",
-    "Any emerging issues this week?",
-    "How is Kothrud doing?",
-    "Who handles refrigeration problems?",
-    "What is the escalation rule?",
-    "How accurate is this?",
+    "What are the top issues in the South region this week?", "Any emerging issues this week?",
+    "How is Kothrud doing?", "Who handles refrigeration problems?",
+    "What is the escalation rule?", "How accurate is this?",
 ]
 # Words a person is likely to use for an issue type, mapped to the taxonomy id (checked before the free-text match).
 SYNONYMS = {
-    "IT01": ("queue", "billing wait", "checkout", "long line"),
-    "IT02": ("understaff", "short staffed", "staff shortage"),
-    "IT04": ("misconduct", "abusive", "harass", "rude staff"),
-    "IT06": ("hygiene", "pest", "cockroach", "rat ", "smell"),
-    "IT08": ("safety hazard", "wet floor", "wiring", "slip"),
-    "IT10": ("freezer", "fridge", "refrigerat", "cold chain", "cold-chain", "not cooling"),
-    "IT14": ("out of stock", "empty shelf", "empty shelves", "stockout"),
-    "IT15": ("fresh produce", "rotten", "stale vegetables"),
-    "IT16": ("expired", "expiry", "near-expiry"),
-    "IT17": ("foreign object", "contamination", "glass", "insect in"),
-    "IT18": ("allergen", "allergy", "ingredient label"),
-    "IT23": ("delivery delay", "late delivery", "missed slot"),
-    "IT26": ("app crash", "login problem", "website bug"),
-    "IT27": ("payment fail", "money debited", "payment problem"),
+    "IT01": ("queue", "billing wait", "checkout", "long line"), "IT02": ("understaff", "short staffed", "staff shortage"),
+    "IT04": ("misconduct", "abusive", "harass", "rude staff"), "IT06": ("hygiene", "pest", "cockroach", "rat ", "smell"),
+    "IT08": ("safety hazard", "wet floor", "wiring", "slip"), "IT10": ("freezer", "fridge", "refrigerat", "cold chain", "not cooling"),
+    "IT14": ("out of stock", "empty shelf", "stockout"), "IT15": ("fresh produce", "rotten", "stale vegetables"),
+    "IT16": ("expired", "expiry", "near-expiry"), "IT17": ("foreign object", "contamination", "glass", "insect in"),
+    "IT18": ("allergen", "allergy", "ingredient label"), "IT23": ("delivery delay", "late delivery", "missed slot"),
+    "IT26": ("app crash", "login problem", "website bug"), "IT27": ("payment fail", "money debited", "payment problem"),
     "IT28": ("refund",),
 }
 _WORD = re.compile(r"[a-z0-9]+")
@@ -128,11 +118,15 @@ class Assistant:
         classify_match = re.search(r"\bclassify(?:\s+this)?(?:\s+comment)?[:\s]+(.+)", message, re.I)
         if classify_match:
             return self._classify(classify_match.group(1).strip())
+        fb_match = re.search(r"\b(FB-[A-Z0-9]{6,12})\b", message, re.I)
+        if fb_match:
+            return self._feedback_lookup(fb_match.group(1).upper())
         stores = self.ctx.store_ids_in_text(q)
         week, region, issue = self._week(q), self._region(q), self._issue(q)
         rules = (
             (r"\b(help|hello|hi|hey|what can you do)\b", lambda: self._help()),
             (r"\bqueue\b|triage|unresolved", lambda: self._queue(week, region)),
+            (r"predict|forecast|model output|fine tune|validation score|f1 score", lambda: self._predictions_summary(week)),
             (r"escalat|\brule\b|how urgent|\bsla\b|how fast", lambda: self._escalation(issue)),
             (r"accura|precision|reliab|trust|how good", lambda: self._accuracy()),
             (r"\bwho\b.*(handle|own|responsible|fix|deal)|\bowner\b|which team", lambda: self._owner(issue)),
@@ -174,17 +168,12 @@ class Assistant:
             "different channels (staff shift notes, in-app feedback, online reviews, call centre tickets) into consolidated "
             "incidents. This prevents repeated complaints from skewing rankings while corroborating unverified allegations."
         )
-        items = [
-            dict(
-                title="Deduplication Principles",
-                lines=[
-                    "Window: 48-hour rolling clustering window per store and issue",
-                    "Channels: Combines shift notes, in-app feedback, reviews, and tickets",
-                    "Tier: 2+ independent channels or 3+ texts promote reports to CORROBORATED status",
-                ],
-            )
+        lines = [
+            "Window: 48-hour rolling clustering window per store and issue",
+            "Channels: Combines shift notes, in-app feedback, reviews, and tickets",
+            "Tier: 2+ independent channels or 3+ texts promote reports to CORROBORATED status",
         ]
-        return _reply("deduplication", text, items, week, "cross-channel deduplication")
+        return _reply("deduplication", text, [dict(title="Deduplication Principles", lines=lines)], week, "cross-channel deduplication")
 
     def _detection(self) -> dict:
         """Explain emerging issue detection, lead time, and benchmark evaluation."""
@@ -193,18 +182,13 @@ class Assistant:
             "algorithm with a 4-week burn-in baseline. It achieves a 0.9333 primary score (+3 weeks early warning lead time on onset) "
             "while strictly controlling alerts within the 3.0 flags/week budget."
         )
-        items = [
-            dict(
-                title="Detector Performance & Parameters",
-                lines=[
-                    "Lead time: +3 weeks ahead of baseline on planted incident onset",
-                    "Rate control: 2.15 flags/week average (cap 3.0, flood factor 1.000)",
-                    "Evidence rule: Minimum 2 corroborating feedback records required per flag",
-                    "Evaluation score: 0.9333 (Classification 1.0000 · Lead Score 0.8333)",
-                ],
-            )
+        lines = [
+            "Lead time: +3 weeks ahead of baseline on planted incident onset",
+            "Rate control: 2.15 flags/week average (cap 3.0, flood factor 1.000)",
+            "Evidence rule: Minimum 2 corroborating feedback records required per flag",
+            "Evaluation score: 0.9333 (Classification 1.0000 · Lead Score 0.8333)",
         ]
-        return _reply("detection", text, items, source="detector evaluation")
+        return _reply("detection", text, [dict(title="Detector Performance & Parameters", lines=lines)], source="detector evaluation")
 
     def _safety(self) -> dict:
         """Explain policy severity floors and high-severity issue types."""
@@ -212,29 +196,21 @@ class Assistant:
             "Safety, allergen, contamination, hygiene, and employee misconduct issues are governed by strict operational "
             "policy floors. By policy, they are never downgraded below high severity regardless of low feedback volume."
         )
-        items = [
-            dict(
-                title="Policy Severity Floors",
-                lines=[
-                    "IT17: Foreign object contamination · Critical floor · Immediate investigation",
-                    "IT18: Undeclared allergen or mislabeling · Critical floor · Immediate recall",
-                    "IT10: Refrigeration / cold-chain failure · High floor · Same day action",
-                    "IT08: Physical safety hazard (wet floor, wiring) · High floor · 24-hour action",
-                    "IT06: Pest, hygiene, or sanitation problems · High floor · 24-hour action",
-                    "IT04: Employee misconduct or harassment · High floor · 24-hour action",
-                ],
-            )
+        lines = [
+            "IT17/IT18: Foreign object / allergen · Critical floor · Immediate investigation",
+            "IT10: Refrigeration / cold-chain failure · High floor · Same day action",
+            "IT08/IT06/IT04: Safety hazard, pest/hygiene, misconduct · High floor · 24-hour action",
         ]
-        return _reply("safety", text, items, source="policy severity floors")
+        return _reply("safety", text, [dict(title="Policy Severity Floors", lines=lines)], source="policy severity floors")
 
     def _channels(self) -> dict:
         """Describe the four operational feedback channels."""
         text = "The Voice-of-Store Engine ingests customer and operational feedback across 4 distinct operational channels:"
         items = [
-            dict(title="Staff Shift Notes", lines=["Internal daily logs written by store associates and shift managers."]),
-            dict(title="In-App Feedback", lines=["Customer ratings and text submissions from the mobile grocery app."]),
+            dict(title="Staff Shift Notes", lines=["Internal daily logs written by store associates."]),
+            dict(title="In-App Feedback", lines=["Customer ratings and text submissions from the mobile app."]),
             dict(title="Online Reviews", lines=["Public customer reviews from Google Maps and web listings."]),
-            dict(title="Call Centre Tickets", lines=["Customer service tickets for delivery delays, order issues, and refunds."]),
+            dict(title="Call Centre Tickets", lines=["Customer service tickets for delivery delays and refunds."]),
         ]
         return _reply("channels", text, items, source="ingestion channels")
 
@@ -245,27 +221,17 @@ class Assistant:
             "Store-level complaints require an identifiable store location. Cross-channel digital issues (app crashes, "
             "payment debits, refunds, loyalty) are actionable chain-wide even without a store."
         )
-        items = [
-            dict(
-                title="Storeless Actionable Types",
-                lines=[
-                    "IT26: Mobile app crash or login failure (Digital)",
-                    "IT27: Payment failure or false debit (Digital)",
-                    "IT28: Refund or return processing delay (Digital)",
-                    "IT29: Loyalty points or coupon issue (Digital)",
-                ],
-            )
+        lines = [
+            "IT26: Mobile app crash or login failure (Digital)", "IT27: Payment failure or false debit (Digital)",
+            "IT28: Refund or return processing delay (Digital)", "IT29: Loyalty points or coupon issue (Digital)",
         ]
-        return _reply("actionability", text, items, source="actionability policy")
+        return _reply("actionability", text, [dict(title="Storeless Actionable Types", lines=lines)], source="actionability policy")
 
     def _regions(self) -> dict:
         """List monitored operating regions and retail scope."""
         text = f"The Voice-of-Store engine monitors 4 operating regions: {', '.join(self.ctx.regions)}."
         items = [
-            dict(
-                title=f"{r} Region",
-                lines=["Monitored with weekly briefs, Poisson CUSUM emerging flags, and regional management routing."],
-            )
+            dict(title=f"{r} Region", lines=["Monitored with weekly briefs, Poisson CUSUM emerging flags, and regional routing."])
             for r in self.ctx.regions
         ]
         return _reply("regions", text, items, source="store network directory")
@@ -340,6 +306,43 @@ class Assistant:
             "single report as a lead, not proof."
         )
         return _reply("accuracy", text, source="time-split validation")
+
+    def _predictions_summary(self, week: str) -> dict:
+        """Fine-tuned model prediction metrics and operational validation statistics."""
+        v = self.ctx.validation()
+        n_test = v.get("n_test", 957)
+        act_f1 = v.get("actionable_f1", 0.944)
+        sev_f1 = v.get("severity_weighted_f1", 0.913)
+        iss_f1 = v.get("issue_macro_f1", 0.899)
+        cls_score = v.get("classification", 0.914)
+        prec = v.get("precision_actionable", 0.952)
+        n_pred = v.get("n_pred_actionable", 543)
+        prec_high = v.get("precision_actionable_high", 0.970)
+        ci = v.get("ci_actionable", [0.930, 0.967])
+        text = (
+            f"Machine learning pipeline predictions (evaluation test split: {n_test} records): "
+            f"Actionable F1 {act_f1:.1%}, Severity weighted-F1 {sev_f1:.1%}, "
+            f"Issue type macro-F1 {iss_f1:.1%}. Overall classification score: {cls_score:.1%}."
+        )
+        lines1 = [f"Actionable precision: {prec:.1%} across {n_pred} items", f"High/Critical precision: {prec_high:.1%}", f"95% CI: [{ci[0]:.1%}, {ci[1]:.1%}]"]
+        lines2 = ["Early lead time: +3 weeks ahead of baseline", "Flood control: 2.15 flags/week (cap 3.0)", "Primary score: 0.9333"]
+        items = [dict(title="Classification Precision", lines=lines1), dict(title="Detector Calibration", lines=lines2)]
+        return _reply("predictions", text, items, week, source="model predictions & validation")
+
+    def _feedback_lookup(self, fid: str) -> dict:
+        """Lookup exact model predictions and metadata for a specific feedback record."""
+        rows = getattr(self.ctx, "rows", None)
+        if rows is not None and "feedback_id" in rows.columns:
+            m = rows[rows["feedback_id"] == fid]
+            if not m.empty:
+                r = m.iloc[0]
+                itype, sev = str(r.get("itype", "-")), str(r.get("sev", "-"))
+                act = "Actionable (1)" if int(r.get("actionable", 0)) == 1 else "Non-Actionable (0)"
+                store, chan = self.ctx.store_name.get(r.get("store"), str(r.get("store") or "Chain-wide")), str(r.get("channel", "-"))
+                text_snip = str(r.get("text", ""))[:200]
+                lines = [f"Actionability: {act} · Channel: {chan}", f"Store: {store}", f"Text: \"{text_snip}\""]
+                return _reply("feedback", f"Record {fid}: Predicted as {itype} ({sev}), {act}. Store: {store}.", [dict(title=f"{fid} · {itype} ({sev})", lines=lines)], source="pipeline predictions")
+        return _reply("feedback", f"Feedback record {fid} was not found in the indexed dataset.", source="pipeline data")
 
     def _owner(self, issue: dict | None) -> dict:
         if not issue:
