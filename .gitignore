@@ -1,33 +1,48 @@
+# TalentAP Mega Hackathon 2026 - Coding Guidelines .gitignore
+# Excluded by rule: datasets, models, environments, build artifacts, secrets
+
+# Large data and model directories
 data/
 models/
+
+# Secrets and local environments
 .env
+.env.local
+.env.*.local
 .venv/
+venv/
+ENV/
+env/
+
+# Dependencies and caches
 node_modules/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.ipynb_checkpoints/
+
+# Evaluation outputs and local test runs
 score.json
 out/
+submission/score.json
 
-.DS_Store
-Thumbs.db
-*.log
-*.zip
-.ipynb_checkpoints/
+# Build outputs
 dist/
 build/
 *.egg-info/
 
-.github/
-!FULL_CODE/.github/
-FULL_CODE/.github/*
-!FULL_CODE/.github/agents/
-FULL_CODE/.github/agents/*
-!FULL_CODE/.github/agents/voice-of-store-engine.agent.md
-
+# Operating system and editor artifacts
+.DS_Store
+Thumbs.db
+*.log
+*.zip
+*.tar.gz
 .vscode/
-
+.idea/
+.github/
 FULL_CODE/.github/
 FULL_CODE/AUTOMATION.md
