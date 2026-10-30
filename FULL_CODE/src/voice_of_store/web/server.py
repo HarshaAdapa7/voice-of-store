@@ -12,6 +12,8 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from ..assistant import MAX_QUESTION_CHARS, Assistant
 from ..brief import render_html
+from .gemini import GeminiAssistant, GeminiError
+from ..notifications import AlertDelivery, AlertDeliveryError
 from ..routing import ESCALATION_RULE
 from ..text import csv_safe
 from .security import SecurityConfig, install
@@ -182,7 +184,7 @@ def _view_routes(app: Flask, state: AppState, ok: Allowed) -> None:
         return jsonify(state.store_overview(_arg("store_id", ok.stores, _ID), _arg("week", ok.weeks, _DATE)))
 
 
-def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig) -> None:
+def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, gemini: GeminiAssistant) -> None:
     """The two JSON POST endpoints: exact field sets, bounded lengths, allow-listed channel."""
     assistant = Assistant(state)
 
@@ -190,12 +192,26 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig) 
     def post_assistant() -> Response:
         """Answer one question of at most 300 characters."""
         body = request.get_json(silent=True)
-        if not isinstance(body, dict) or set(body) != {"message"}:
+        if not isinstance(body, dict) or set(body) not in ({"message"}, {"message", "mode"}):
             abort(400)
         message = body["message"]
-        if not isinstance(message, str) or not message.strip() or len(message) > MAX_QUESTION_CHARS:
+        mode = body.get("mode", "local")
+        if (
+            not isinstance(message, str)
+            or not message.strip()
+            or len(message) > MAX_QUESTION_CHARS
+            or mode not in ("local", "gemini")
+        ):
             abort(400)
-        return jsonify(assistant.ask(message))
+        result = assistant.ask(message)
+        if mode == "gemini":
+            if not gemini.enabled:
+                return jsonify(error="Gemini mode is not configured"), 503
+            try:
+                result["llm_summary"] = gemini.summarize(result, tuple(getattr(state, "store_name", {}).values()))
+            except GeminiError:
+                return jsonify(error="Gemini summary is unavailable"), 502
+        return jsonify(result)
 
     @app.post("/api/classify")
     def post_classify() -> Response:
@@ -209,9 +225,52 @@ def _post_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig) 
         return jsonify(state.classify(text, channel))
 
 
+def _alert_routes(app: Flask, state: AppState, ok: Allowed, cfg: SecurityConfig, delivery: AlertDelivery) -> None:
+    """Alert preview and sending require configured HTTP Basic authentication."""
+
+    def approver() -> str | None:
+        auth = request.authorization
+        if not cfg.auth_user or not auth or auth.username != cfg.auth_user:
+            return None
+        return auth.username
+
+    @app.get("/api/alerts/preview")
+    def preview_alerts() -> Response:
+        _only("week")
+        if not approver():
+            return jsonify(error="forbidden"), 403
+        week = _arg("week", ok.weeks, _DATE)
+        return jsonify(delivery.prepare(week, state.flags_for(week)))
+
+    @app.post("/api/alerts/send")
+    def send_alerts() -> Response:
+        operator = approver()
+        if not operator:
+            return jsonify(error="forbidden"), 403
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or set(body) != {"week", "batch_id", "approved"}:
+            abort(400)
+        week, batch_id, approved = body["week"], body["batch_id"], body["approved"]
+        if week not in ok.weeks or not isinstance(batch_id, str) or not re.fullmatch(r"[0-9a-f]{64}", batch_id):
+            abort(400)
+        if approved is not True:
+            abort(400)
+        try:
+            sent = delivery.send(week, state.flags_for(week), batch_id, approved=True, approved_by=operator)
+        except AlertDeliveryError as exc:
+            status = 409 if "changed" in str(exc) or "already attempted" in str(exc) else 503
+            return jsonify(error=str(exc)), status
+        return jsonify(sent)
+
+
 def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     """Build the allow-lists from the loaded data and register every API and page route."""
     meta = state.meta()
+    gemini = GeminiAssistant()
+    delivery = AlertDelivery()
+    meta["assistant_modes"] = {"local": True, "gemini": gemini.enabled}
+    meta["alert_delivery_enabled"] = delivery.settings.enabled and bool(cfg.auth_user)
+    meta["alert_approval_required"] = True
     ok = Allowed(
         channels=frozenset(meta["channels"]),
         types=frozenset(t["id"] for t in meta["issue_types"]),
@@ -221,7 +280,8 @@ def _register_api(app: Flask, state: AppState, cfg: SecurityConfig) -> None:
     )
     _core_routes(app, state, meta)
     _view_routes(app, state, ok)
-    _post_routes(app, state, ok, cfg)
+    _post_routes(app, state, ok, cfg, gemini)
+    _alert_routes(app, state, ok, cfg, delivery)
 
 
 def create_app(state: AppState, cfg: SecurityConfig | None = None) -> Flask:

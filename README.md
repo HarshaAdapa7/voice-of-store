@@ -28,7 +28,7 @@ Users: regional ops heads and function owners (Store Ops, Supply Chain, Merchand
 
 ## How to run
 
-**Python 3.12 or newer** (tested on 3.13; the pinned pandas 3 and numpy 2.5 do not install on older Pythons). No internet and no API keys are needed at run time.
+**Python 3.12 or newer** (tested on 3.13; the pinned pandas 3 and numpy 2.5 do not install on older Pythons). The detector, classifier, briefs, and local assistant need no internet or API keys. Optional Gemini summaries and approved SMTP notifications require their own configuration.
 
 **Step 0, before anything else: add the data.** The zip does not contain the pack's data files (they are large and git-ignored by design). Create a folder named `data` next to `FULL_CODE` and copy into it `feedback.csv`, `feedback_labels_train.csv`, `store_master.csv`, `issue_taxonomy.csv`, `week_calendar.csv` and `emerging_incidents_train.csv` from the organisers' pack. Without them the commands stop with `error: missing data file: ...`; the tests skip the data-dependent cases.
 
@@ -163,8 +163,7 @@ unchanged, and a disguised copy (new ids, dates shifted by 7 weeks) gives the sa
 
 ## Security
 
-The web demo is read-only over synthetic data plus two stateless POST endpoints (classify and the rule-based assistant, 300-character questions, own rate limit): no accounts, cookies, database, uploads
-or outbound calls. Controls (each has a test in `tests/test_web.py`): strict Content-Security-Policy with no inline script,
+The web demo is read-only over synthetic data plus stateless POST endpoints for classify, the assistant, and approved alert delivery. Optional Gemini receives only a redacted deterministic answer, never a question or raw feedback; optional SMTP delivery uses TLS and requires per-batch human approval. Controls (each has a test in `tests/test_web.py`): strict Content-Security-Policy with no inline script,
 DOM built with `textContent` only, escaped printable brief, host allow-list (DNS rebinding), origin and fetch-metadata checks plus
 JSON-only POST (CSRF), allow-lists for every query value, fixed static-file table (no path traversal), body and text size
 limits, per-client rate limits with bounded memory, optional login (salted scrypt hash, failed-login limiter) and constant-time API key, generic errors with request ids,
@@ -189,8 +188,9 @@ container, `ruff` with the bandit rules. Full table, configuration and the hones
 
 ## AI usage
 
-- **In the app (detector, classifier, web demo):** no LLM, no external AI API, no downloaded model. The classifier is a scikit-learn linear SVM trained at
-  run time from the public labels; nothing is pickled.
+- **Local path:** detector, classifier, briefs, and rule-based assistant run locally. The classifier is a scikit-learn linear SVM trained at runtime from public labels; nothing is pickled.
+- **Optional assistant summary:** when `GEMINI_API_KEY` is configured and the user selects Gemini mode, the app sends only the redacted deterministic response to Gemini. It never sends the question or raw feedback. The local answer remains visible and authoritative; Gemini output is labeled as generated and may be unavailable.
+- **Optional alerts:** SMTP sends only after an operator reviews the recipients and current alert batch and confirms that batch. The message omits feedback quotes. Configure it through environment variables in `FULL_CODE/.env.example`; do not commit credentials.
 - **While building:** Claude (Anthropic) was used as an AI coding and research assistant for planning, code, tests, the web
   demo, the security review and this README. Google AI Studio may be used for further development; any such use is added here. The team reviewed the code; every member should be able to explain it.
 

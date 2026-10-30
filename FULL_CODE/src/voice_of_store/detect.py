@@ -93,8 +93,9 @@ def run_statistic(
         step = n * ln_m - (p["mult"] - 1.0) * mu  # log-likelihood ratio: rate x mult versus baseline
         state = np.maximum(0.0, state + step)  # CUSUM: evidence accumulates, never below zero
         expected[:, :, w], llr[:, :, w], cusum[:, :, w] = mu, step, state
-        fire = (state >= p["h"]) & (n >= p["min_n"]) & ((w - last_flag) > p["cooldown"])
-        fire = _cap_flags(fire, state, p["cap"], tie_rank)
+        eff = state * p["weights"][None, :] if "weights" in p and p["weights"] is not None else state
+        fire = (eff >= p["h"]) & (n >= p["min_n"]) & ((w - last_flag) > p["cooldown"])
+        fire = _cap_flags(fire, eff, p["cap"], tie_rank)
         flag[:, :, w] = fire
         state = np.where(fire, 0.0, state)
         last_flag = np.where(fire, w, last_flag)

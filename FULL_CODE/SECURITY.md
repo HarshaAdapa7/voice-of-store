@@ -4,8 +4,7 @@ This page states what the web demo defends against, how, and what it does not do
 `FULL_CODE/src/voice_of_store/web/`. The detector and classifier (`detect.py`, `make_submission.py`) have no network code at all.
 
 ## What the app is
-A read-only analytics page over synthetic data plus two stateless POST endpoints (`/api/classify` and the store assistant `/api/assistant`). It has no accounts, no
-cookies, no database, no uploads and no file writes. It makes no outbound network calls. No LLM or external API is used.
+A read-only analytics page over synthetic data plus stateless analytics, assistant, and optional notification endpoints. It has no cookies, database, or uploads. The detector and local assistant make no outbound calls. Optional Gemini summary mode and SMTP alert delivery are isolated opt-ins; both are disabled unless configured, and SMTP additionally requires authenticated per-batch human approval.
 
 ## Threat model and controls
 
@@ -39,6 +38,10 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 | `R5_API_KEY` | When set, `POST /api/classify` needs the header `X-API-Key: <value>` |
 | `R5_HTTPS` | `1` when TLS is terminated in front of the app: adds HSTS |
 | `R5_TRUST_PROXY` | `1` only behind a trusted reverse proxy: use its `X-Forwarded-For` for rate limiting |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Optional assistant summary; sends only redacted deterministic answer fields, never the question or raw feedback |
+| `R5_SMTP_HOST`, `R5_SMTP_PORT`, `R5_SMTP_FROM`, `R5_ALERT_RECIPIENTS` | Optional SMTP delivery; STARTTLS is required and exact recipients are shown for each human approval |
+| `R5_SMTP_USERNAME`, `R5_SMTP_PASSWORD` | Optional SMTP authentication; set both or neither |
+| `R5_ALERT_AUDIT_PATH` | Local append-only JSONL audit file; default `out/notification_audit.jsonl` |
 
 ## What this does NOT do (read before exposing it)
 - Authentication is one shared login (or none, by default on localhost). There are no user accounts, roles, password reset or
@@ -52,11 +55,16 @@ cookies, no database, no uploads and no file writes. It makes no outbound networ
 Open an issue on the team repository or contact the team lead. Do not post exploit details publicly.
 
 ## Store assistant (`POST /api/assistant`)
-- **No LLM, no outbound calls.** It is a deterministic, rule-based assistant: it matches the question to an intent (brief, store, emerging, owner, escalation, accuracy, classify) and reads answers from the same in-memory data as the dashboard. There is no prompt, so there is nothing to prompt-inject; instruction-like text is treated as an unknown question.
-- Body must be exactly `{"message": "<string>"}` (1-300 characters, no extra fields); same JSON-only, Origin, Sec-Fetch-Site, rate-limit (own bucket) and login checks as the classify endpoint.
-- Replies are built from fixed templates and data values, never from the question text; the UI renders them with `textContent`. Questions are not logged.
+- Default mode is deterministic and local: it matches the question to an intent (brief, store, emerging, owner, escalation, accuracy, classify) and reads from the same in-memory data as the dashboard. Instruction-like text is treated as an unknown question.
+- Optional `mode: "gemini"` adds a generated summary of the deterministic response. Only allow-listed response fields are sent, with store names, email addresses, and phone numbers redacted; the question and raw feedback are never sent. The original local answer remains available beside the generated summary.
+- Body accepts `{"message": "<string>"}` or `{"message": "<string>", "mode": "local|gemini"}` (1-300 characters, no extra fields); same JSON-only, Origin, Sec-Fetch-Site, rate-limit, and login checks as the classify endpoint.
 - `GET /api/store` uses the same allow-lists as the other query endpoints (store id and week must be in the start-up lists).
 - Live check: start the server, then `python FULL_CODE/scripts/security_probe.py http://127.0.0.1:8000` (32 checks, run against this build: all passed).
+
+## Approved head-office alerts
+- `GET /api/alerts/preview?week=<allow-listed-week>` builds a quote-free draft from current emerging flags. Preview and send require `R5_AUTH_USER`/`R5_AUTH_HASH` authentication.
+- `POST /api/alerts/send` accepts only the week, preview batch ID, and explicit approval. It rebuilds the current flags, rejects stale previews, sends through SMTP STARTTLS, and records the approver and attempt in the audit file before delivery. Repeated attempts for the same batch fail closed; inspect the audit before any manual retry.
+- The alert email identifies reports as unverified, omits raw evidence quotes, and lists only the configured recipients. The browser asks for confirmation on every batch. Configure server-side SMTP settings before enabling this feature; no live destination or credentials are provided by default.
 
 ## Hardening round 2 (what was added and why)
 | Gap closed | Control | Test |

@@ -16,9 +16,10 @@ from pathlib import Path
 
 ALLOWED_TOP = {"README.md", ".gitignore", "LICENSE", "submission", "FULL_CODE", ".git"}
 FORBIDDEN_IMPORT = re.compile(r"^\s*(import|from)\s+(requests|urllib|http|socket|pickle|joblib|httpx|aiohttp)\b", re.M)
-# the web demo may parse URLs; nothing may use pickle or make outbound requests
+# only the optional Gemini summary adapter may make an outbound request; detector code stays offline
 FORBIDDEN_WEB = re.compile(r"^\s*(import|from)\s+(requests|socket|pickle|joblib|httpx|aiohttp|subprocess)\b", re.M)
 WEB_IMPORT = re.compile(r"^\s*(import|from)\s+(voice_of_store\.web|\.web|\.\.web)\b", re.M)
+GEMINI_CLIENT = Path("src/voice_of_store/gemini.py")
 HARD_CODED = re.compile(r"\b20\d\d-\d\d-\d\d\b|\b(ST|FB)-[A-Z0-9]{5,8}\b")
 SECRETS = re.compile(r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"][^'\"]{8,}", re.I)
 
@@ -39,7 +40,7 @@ def main() -> int:
         if need not in top:
             bad.append(f"missing top-level {need}")
 
-    gi = (root / ".gitignore").read_text() if (root / ".gitignore").exists() else ""
+    gi = (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
     for pat in ("data/", "models/", ".env", ".venv/", "node_modules/"):
         if pat not in gi:
             bad.append(f".gitignore must list {pat}")
@@ -52,7 +53,7 @@ def main() -> int:
             bad.append(f"submission/{f} missing")
     cmd = sub / "detector_cmd.txt"
     if cmd.exists():
-        line = cmd.read_text().strip()
+        line = cmd.read_text(encoding="utf-8").strip()
         if line != "python FULL_CODE/detect.py --feedback {feedback} --as-of {asof} --out {out}":
             bad.append(f"detector_cmd.txt has unexpected line: {line}")
         if not (root / "FULL_CODE" / "detect.py").exists():
@@ -78,13 +79,13 @@ def main() -> int:
         if p not in web
     ]
     for py in core:
-        text = py.read_text()
-        if FORBIDDEN_IMPORT.search(text):
+        text = py.read_text(encoding="utf-8")
+        if FORBIDDEN_IMPORT.search(text) and py.relative_to(code) != GEMINI_CLIENT:
             bad.append(f"network/pickle import in {py.relative_to(root)}")
         if WEB_IMPORT.search(text):
             bad.append(f"detector-side module imports the web layer: {py.relative_to(root)}")
     for py in core + web:
-        text = py.read_text()
+        text = py.read_text(encoding="utf-8")
         if HARD_CODED.search(text):
             bad.append(f"hard-coded date or id in {py.relative_to(root)}")
         if SECRETS.search(text):
@@ -93,7 +94,7 @@ def main() -> int:
         if FORBIDDEN_WEB.search(py.read_text()):
             bad.append(f"forbidden import in web layer: {py.relative_to(root)}")
 
-    readme = (root / "README.md").read_text() if (root / "README.md").exists() else ""
+    readme = (root / "README.md").read_text(encoding="utf-8") if (root / "README.md").exists() else ""
     for h in (
         "What it does",
         "How to run",

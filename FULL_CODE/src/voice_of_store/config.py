@@ -27,7 +27,7 @@ MIN_TRAIN_ROWS = 50  # fewest labelled rows the classifier will train on
 HISTORY_WEEKS = 14  # weeks of history used for a store's own baseline
 PRIOR_STRENGTH = 6.0  # Gamma prior strength, in expected reports (shrinks a store toward the chain rate)
 ALT_MULTIPLIER = 3.0  # CUSUM alternative: the store's rate is this many times its baseline
-LLR_THRESHOLD = 5.0  # flag when the cumulative log-likelihood ratio reaches this
+LLR_THRESHOLD = 3.8  # flag when the cumulative log-likelihood ratio reaches this
 MIN_WEEK_COUNT = 2  # a flag needs >= 2 reports this week (the evidence rule needs 2 valid ids)
 MIN_BASE_WEEKS = 3  # weeks of history required before any flag is raised
 COOLDOWN_WEEKS = 2  # do not re-flag the same store and issue type for this many weeks

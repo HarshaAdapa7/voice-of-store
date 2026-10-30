@@ -270,10 +270,13 @@ def _add_headers(cfg: SecurityConfig, resp: Response) -> Response:
 def _register_errors(app: Flask) -> None:
     messages = {
         400: "bad request",
+        401: "unauthorized",
+        403: "forbidden",
         404: "not found",
         405: "method not allowed",
         413: "request too large",
         414: "request target too long",
+        429: "too many requests",
     }
     for code, text in messages.items():
         app.register_error_handler(code, lambda _e, c=code, t=text: _err(c, t))

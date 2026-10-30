@@ -3,68 +3,313 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voice-of-Store</title>
+<title>Voice of Store · Enterprise Operations Intelligence</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
-<header>
-  <h1>Voice-of-Store Engine</h1>
-  <p class="sub">Weekly action list per region from reviews, app comments, shift notes and call transcripts. Synthetic data.</p>
-  <nav role="tablist" aria-label="Views">
-    <button role="tab" id="tab-brief" aria-controls="view-brief" tabindex="0" data-view="brief" aria-selected="true">Weekly brief</button>
-    <button role="tab" id="tab-emerging" aria-controls="view-emerging" tabindex="-1" data-view="emerging" aria-selected="false">Emerging issues</button>
-    <button role="tab" id="tab-stores" aria-controls="view-stores" tabindex="-1" data-view="stores" aria-selected="false">Stores</button>
-    <button role="tab" id="tab-ask" aria-controls="view-ask" tabindex="-1" data-view="ask" aria-selected="false">Ask</button>
-    <button role="tab" id="tab-try" aria-controls="view-try" tabindex="-1" data-view="try" aria-selected="false">Try a comment</button>
-    <button role="tab" id="tab-precision" aria-controls="view-precision" tabindex="-1" data-view="precision" aria-selected="false">Precision</button>
-  </nav>
-</header>
-<main id="main" tabindex="-1">
-  <section role="tabpanel" aria-labelledby="tab-brief" id="view-brief">
-    <div class="controls">
-      <label>Region <select id="region"></select></label>
-      <label>Week <select id="week"></select></label>
-      <a id="print" class="btn" target="_blank" rel="noopener noreferrer">Open printable page</a>
+<a class="skip-link" href="#main">Skip to main content</a>
+<div class="app-container">
+  <aside class="app-sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 9l2-5h16l2 5"></path>
+          <path d="M4 9v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"></path>
+          <path d="M9 22V12h6v10"></path>
+          <path d="M2 9h20"></path>
+        </svg>
+      </div>
+      <div class="brand-titles">
+        <span class="brand-name">Voice of Store</span>
+        <span class="brand-subtitle">Retail Intelligence</span>
+      </div>
     </div>
-    <div id="brief" aria-live="polite"></div>
-  </section>
-  <section role="tabpanel" aria-labelledby="tab-emerging" id="view-emerging" hidden>
-    <div class="controls"><label>Week <select id="eweek"></select></label><a id="export" class="btn" download>Download flags (CSV)</a></div>
-    <p class="sub">A flag means a store reports an issue type clearly above its own normal rate, with at least two reports this week. At most three flags a week.</p>
-    <div id="flags" aria-live="polite"></div>
-  </section>
-  <section role="tabpanel" aria-labelledby="tab-stores" id="view-stores" hidden>
-    <div class="controls">
-      <label>Find a store <input id="storefilter" type="search" maxlength="40" autocomplete="off" placeholder="name or region"></label>
-      <label>Store <select id="store"></select></label>
-      <label>Week <select id="sweek"></select></label>
-    </div>
-    <div id="storeview" aria-live="polite"></div>
-  </section>
-  <section role="tabpanel" aria-labelledby="tab-ask" id="view-ask" hidden>
-    <p class="sub">Ask about a store, a region, emerging issues, who owns an issue or the escalation rule. Answers come from the weekly briefs (this is not an AI model; nothing you type is sent anywhere else). Start with "classify:" to label a comment.</p>
-    <div id="chat" role="log" aria-live="polite" aria-label="Conversation"></div>
-    <div id="chips" class="chips"></div>
-    <form id="askform">
-      <label>Your question <input id="question" type="text" maxlength="300" autocomplete="off" placeholder="e.g. How is Kothrud doing?"></label>
-      <button class="btn" type="submit">Ask</button>
-      <button class="btn" type="button" id="clearchat">Clear chat</button>
-    </form>
-  </section>
-  <section role="tabpanel" aria-labelledby="tab-try" id="view-try" hidden>
-    <form id="tryform">
-      <label>Channel <select id="channel"></select></label>
-      <label>Comment <textarea id="text" maxlength="2000" rows="4" placeholder="e.g. frzr 3 not cooling since morning at Kothrud, ice cream melting"></textarea></label>
-      <button class="btn" type="submit">Classify</button>
-    </form>
-    <div id="result" aria-live="polite"></div>
-  </section>
-  <section role="tabpanel" aria-labelledby="tab-precision" id="view-precision" hidden>
-    <div id="precision"></div>
-  </section>
-</main>
-<footer id="rule"></footer>
+    <nav class="sidebar-nav" role="tablist" aria-label="Store Intelligence Navigation">
+      <span class="nav-section-label">Intelligence</span>
+      <button role="tab" id="tab-overview" aria-controls="view-overview" tabindex="0" data-view="overview" aria-selected="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span>Overview</span>
+      </button>
+      <button role="tab" id="tab-brief" aria-controls="view-brief" tabindex="-1" data-view="brief" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+        <span>Weekly Brief</span>
+      </button>
+      <button role="tab" id="tab-emerging" aria-controls="view-emerging" tabindex="-1" data-view="emerging" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span>Emerging Issues</span>
+      </button>
+      <button role="tab" id="tab-stores" aria-controls="view-stores" tabindex="-1" data-view="stores" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+          <circle cx="12" cy="10" r="3"></circle>
+        </svg>
+        <span>Stores</span>
+      </button>
+      <button role="tab" id="tab-queue" aria-controls="view-queue" tabindex="-1" data-view="queue" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 11 12 14 22 4"></polyline>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+        <span>Escalation Queue</span>
+      </button>
+      <span class="nav-section-label">Investigation</span>
+      <button role="tab" id="tab-ask" aria-controls="view-ask" tabindex="-1" data-view="ask" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span>Ask Assistant</span>
+      </button>
+      <button role="tab" id="tab-try" aria-controls="view-try" tabindex="-1" data-view="try" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span>Try a Comment</span>
+      </button>
+      <button role="tab" id="tab-precision" aria-controls="view-precision" tabindex="-1" data-view="precision" aria-selected="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+        <span>Precision &amp; Report</span>
+      </button>
+    </nav>
+  </aside>
+  <div class="app-main">
+    <header class="app-header">
+      <div class="header-left">
+        <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="header-breadcrumb">
+          <span class="breadcrumb-root">Voice of Store</span>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current" id="page-title">Overview</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-badge">
+          <span class="header-badge-dot"></span>
+          <span>Stream Synchronized</span>
+        </div>
+      </div>
+    </header>
+    <main class="content-area" id="main" tabindex="-1">
+      <section role="tabpanel" aria-labelledby="tab-overview" id="view-overview">
+        <div class="controls-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Region</span>
+              <select id="ov-region" aria-label="Overview Region"></select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Store Scope</span>
+              <select id="ov-store" aria-label="Overview Store Filter">
+                <option value="ALL">All Stores (Regional Summary)</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Week</span>
+              <select id="ov-week" aria-label="Overview Reporting Week"></select>
+            </div>
+          </div>
+          <div class="controls-group">
+            <button class="btn btn-primary btn-sm" id="ov-quick-brief">View Weekly Brief</button>
+          </div>
+        </div>
+        <div id="overview-kpis" class="kpi-row"></div>
+        <div id="overview-safety-section"></div>
+        <div id="overview-grid"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-brief" id="view-brief" hidden>
+        <div class="controls-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Region</span>
+              <select id="region" aria-label="Region filter"></select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Store</span>
+              <select id="brief-store" aria-label="Store filter">
+                <option value="ALL">All Stores</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Reporting Week</span>
+              <select id="week" aria-label="Week filter"></select>
+            </div>
+          </div>
+          <div class="controls-group">
+            <a id="print" class="btn btn-outline" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                <rect x="6" y="14" width="12" height="8"></rect>
+              </svg>
+              <span>Open Printable Page</span>
+            </a>
+          </div>
+        </div>
+        <div id="brief" aria-live="polite"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-emerging" id="view-emerging" hidden>
+        <div class="controls-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Reporting Week</span>
+              <select id="eweek" aria-label="Emerging issues week filter"></select>
+            </div>
+          </div>
+          <div class="controls-group">
+            <a id="export" class="btn btn-outline" download>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span>Download Flags (CSV)</span>
+            </a>
+            <button id="prepare-alerts" class="btn btn-primary" type="button">Prepare Alert Email</button>
+          </div>
+        </div>
+        <p id="alert-delivery-status" class="sub-meta" aria-live="polite"></p>
+        <div id="flags" aria-live="polite"></div>
+        <div id="alert-preview" aria-live="polite"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-stores" id="view-stores" hidden>
+        <div class="controls-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Search Store</span>
+              <input id="storefilter" type="search" maxlength="40" autocomplete="off" placeholder="Filter by store name or region...">
+            </div>
+            <div class="control-item">
+              <span class="control-label">Selected Store</span>
+              <select id="store" aria-label="Select store"></select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Week</span>
+              <select id="sweek" aria-label="Select store week"></select>
+            </div>
+          </div>
+        </div>
+        <div id="storeview" aria-live="polite"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-queue" id="view-queue" hidden>
+        <div class="controls-bar">
+          <div class="controls-group">
+            <div class="control-item">
+              <span class="control-label">Region</span>
+              <select id="q-region" aria-label="Filter by region">
+                <option value="ALL">All Regions (Chain-wide)</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Reporting Week</span>
+              <select id="q-week" aria-label="Filter by reporting week"></select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Owner Function</span>
+              <select id="q-owner" aria-label="Filter by owner">
+                <option value="ALL">All Functions</option>
+                <option value="Store Ops">Store Ops</option>
+                <option value="Supply Chain">Supply Chain</option>
+                <option value="Merchandising">Merchandising</option>
+                <option value="Digital">Digital</option>
+                <option value="HR">HR</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Severity</span>
+              <select id="q-sev" aria-label="Filter by severity">
+                <option value="ALL">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Verification</span>
+              <select id="q-tier" aria-label="Filter by verification tier">
+                <option value="ALL">All Tiers</option>
+                <option value="POSSIBLE SYSTEMIC">Possible Systemic</option>
+                <option value="CORROBORATED">Corroborated</option>
+                <option value="UNVERIFIED">Unverified</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="queue-container" aria-live="polite"></div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-ask" id="view-ask" hidden>
+        <div class="card">
+          <h2 class="card-title">Store Operations Assistant</h2>
+          <p class="sub-meta">Ask about stores, regions, emerging issues, owners, or escalation policy. Local answers are deterministic; optional Gemini summaries use only the redacted local result, never your question or raw feedback.</p>
+          <div class="chips-container" id="chips"></div>
+          <div class="chat-container" id="chat" role="log" aria-live="polite" aria-label="Investigation Conversation"></div>
+          <form class="chat-form" id="askform">
+            <label class="control-item" for="assistant-mode">
+              <span class="control-label">Answer mode</span>
+              <select id="assistant-mode" aria-label="Assistant answer mode">
+                <option value="local">Local</option>
+                <option value="gemini">Local + Gemini summary</option>
+              </select>
+            </label>
+            <input class="chat-input" id="question" type="text" maxlength="300" autocomplete="off" placeholder="e.g. Which stores have rising refrigeration complaints?">
+            <button class="btn btn-primary" type="submit">Ask</button>
+            <button class="btn btn-outline" type="button" id="clearchat">Clear Chat</button>
+          </form>
+        </div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-try" id="view-try" hidden>
+        <div class="card">
+          <h2 class="card-title">Classifier Studio: Test Feedback Comment</h2>
+          <p class="sub-meta">Evaluate incoming customer reviews, in-app comments, shift notes, and call transcripts through the three-headed linear SVM with policy floors and actionable gates.</p>
+          <form id="tryform">
+            <div class="control-item">
+              <span class="control-label">Feedback Channel</span>
+              <select id="channel" aria-label="Select feedback channel"></select>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Quick Test Presets:</span>
+              <div class="chips-container" id="try-presets"></div>
+            </div>
+            <div class="control-item">
+              <span class="control-label">Comment Text</span>
+              <textarea id="text" maxlength="2000" rows="4" placeholder="e.g. freezer 3 in dairy section not cooling since morning at Kothrud, ice cream melting"></textarea>
+            </div>
+            <div>
+              <button class="btn btn-primary" type="submit">Run Classification</button>
+            </div>
+          </form>
+          <div id="result" aria-live="polite"></div>
+        </div>
+      </section>
+      <section role="tabpanel" aria-labelledby="tab-precision" id="view-precision" hidden>
+        <div id="precision" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+</div>
 <script src="/app.js"></script>
 </body>
 </html>

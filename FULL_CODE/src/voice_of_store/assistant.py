@@ -259,5 +259,7 @@ class Assistant:
                 "Write the comment after 'classify:', for example: classify: frzr not cooling since morning at Kothrud.",
             )
         r = self.ctx.classify(text, "in_app")
-        line = f"owner {r['owner']} · severity {r['severity']} · actionable {'yes' if r['actionable'] else 'no'} · confidence score {r['confidence']}"
-        return _reply("classify", f"{r['issue_type']} · {r['issue']}", [dict(title="Result", lines=[line])], None, "classifier")
+        actionable_str = "yes" if r.get("actionable") else "no"
+        line = f"owner {r.get('owner', '-')} · severity {r.get('severity', '-')} · actionable {actionable_str} · confidence score {r.get('confidence', '-')}"
+        issue_desc = r.get("issue", r.get("issue_type", "-"))
+        return _reply("classify", f"{r.get('issue_type', '-')} · {issue_desc}", [dict(title="Result", lines=[line])], None, "classifier")

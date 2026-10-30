@@ -284,6 +284,38 @@ def _auth_client(**kw):
     return make(auth_user="judge", auth_hash=h, **kw)
 
 
+def test_alert_preview_and_send_require_authenticated_batch_approval(monkeypatch, tmp_path):
+    from voice_of_store.web import server
+
+    captured = {}
+
+    class FakeDelivery:
+        settings = type("Settings", (), {"enabled": True})()
+
+        def prepare(self, week, flags):
+            return dict(week=week, batch_id="a" * 64, flag_count=len(flags), enabled=True)
+
+        def send(self, week, flags, batch_id, approved, approved_by):
+            captured.update(week=week, batch_id=batch_id, approved=approved, approved_by=approved_by)
+            return dict(week=week, batch_id=batch_id, sent=True, recipient_count=1)
+
+    monkeypatch.setattr(server, "AlertDelivery", FakeDelivery)
+    unauthenticated = make()
+    assert unauthenticated.get("/api/alerts/preview", query_string={"week": WEEK}).status_code == 403
+    assert unauthenticated.post(
+        "/api/alerts/send", json={"week": WEEK, "batch_id": "a" * 64, "approved": True}
+    ).status_code == 403
+
+    client = _auth_client()
+    auth = _basic("judge", TEST_PASSWORD)
+    preview = client.get("/api/alerts/preview", query_string={"week": WEEK}, headers=auth)
+    assert preview.status_code == 200 and preview.get_json()["batch_id"] == "a" * 64
+    body = {"week": WEEK, "batch_id": "a" * 64, "approved": True}
+    assert client.post("/api/alerts/send", json=body, headers=auth).get_json()["sent"] is True
+    assert captured["approved_by"] == "judge" and captured["approved"] is True
+    assert client.post("/api/alerts/send", json={**body, "approved": False}, headers=auth).status_code == 400
+
+
 def _basic(user, password):
     import base64
 
@@ -368,12 +400,44 @@ def test_assistant_endpoint_validates_input(client):
         {"message": 5},
         {"message": "x" * 301},
         {"message": "hi", "extra": 1},
+        {"message": "hi", "mode": "unrecognized"},
+        {"message": "hi", "mode": 1},
         [],
         "text",
     ]:
         assert client.post("/api/assistant", json=body).status_code == 400, body
     assert client.post("/api/assistant", data="message=hi", headers={"Content-Type": "text/plain"}).status_code == 415
     assert client.post("/api/assistant", json={"message": "hi"}, headers={"Origin": "https://evil.example"}).status_code == 403
+
+
+def test_gemini_assistant_mode_is_optional(monkeypatch):
+    from voice_of_store.web import server
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    c = make()
+    assert c.get("/api/meta").get_json()["assistant_modes"] == {"local": True, "gemini": False}
+    assert c.post("/api/assistant", json={"message": "hello", "mode": "local"}).status_code == 200
+    assert c.post("/api/assistant", json={"message": "hello", "mode": "gemini"}).status_code == 503
+
+    captured = {}
+
+    class FakeGemini:
+        enabled = True
+
+        def summarize(self, result, store_names):
+            captured["result"] = result.copy()
+            captured["store_names"] = store_names
+            return "Model summary"
+
+    monkeypatch.setattr(server, "GeminiAssistant", FakeGemini)
+    c = make()
+    response = c.post(
+        "/api/assistant",
+        json={"message": "hello RAW QUESTION AND FEEDBACK MUST STAY LOCAL", "mode": "gemini"},
+    )
+    assert response.status_code == 200 and response.get_json()["llm_summary"] == "Model summary"
+    assert "RAW QUESTION" not in repr(captured["result"])
+    assert "message" not in captured["result"]
 
 
 def test_assistant_has_its_own_rate_limit():

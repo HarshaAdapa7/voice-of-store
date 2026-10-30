@@ -192,3 +192,52 @@ def test_question_is_truncated_to_the_limit(bot):
     a, ctx = bot
     a.ask("south " + "x" * 10_000)
     assert MAX_QUESTION_CHARS == 300
+
+
+def test_gemini_receives_only_redacted_deterministic_answer():
+    import io
+    import json
+
+    from voice_of_store.web.gemini import GeminiAssistant
+
+    captured = {}
+
+    def opener(request, timeout):
+        captured["body"] = json.loads(request.data)
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        return io.BytesIO(b'{"candidates":[{"content":{"parts":[{"text":"Grounded summary."}]}}]}')
+
+    result = {
+        "intent": "store",
+        "reply": "Sensitive Store has 3 actionable reports.",
+        "week": "2026-09-07",
+        "source": "store overview",
+        "question": "RAW QUESTION MUST STAY LOCAL",
+        "feedback": "RAW FEEDBACK MUST STAY LOCAL",
+        "items": [{"title": "Refrigeration", "lines": ["Contact owner@example.com at 9876543210"]}],
+    }
+    summary = GeminiAssistant(api_key="test-only", opener=opener).summarize(
+        result,
+        store_names=("Sensitive Store",),
+    )
+
+    serialized = json.dumps(captured["body"])
+    assert summary == "Grounded summary."
+    assert "Sensitive Store" not in serialized and "owner@example.com" not in serialized and "9876543210" not in serialized
+    assert "RAW QUESTION" not in serialized and "RAW FEEDBACK" not in serialized
+    assert "Sensitive Store" not in captured["url"] and "test-only" in captured["url"]
+
+
+def test_gemini_disabled_without_key_and_hides_provider_errors():
+    from voice_of_store.web.gemini import GeminiAssistant, GeminiError
+
+    with pytest.raises(GeminiError, match="not configured"):
+        GeminiAssistant(api_key="").summarize({"reply": "local result"})
+
+    def failed_opener(_request, **_kwargs):
+        raise OSError("provider returned key=private")
+
+    with pytest.raises(GeminiError, match="unavailable") as error:
+        GeminiAssistant(api_key="test-only", opener=failed_opener).summarize({"reply": "local result"})
+    assert "private" not in str(error.value)
