@@ -2598,7 +2598,6 @@ async function renderHoOverview(container) {
   elements.push(kpiGrid);
 
   // Fetch problems matching active filters (Region, Format, Store, Search)
-  const q = getHoFilterQueryParams();
   const matrixData = await hoApi("/api/ho/resolution_matrix?" + q.toString());
 
   // Store format cards
