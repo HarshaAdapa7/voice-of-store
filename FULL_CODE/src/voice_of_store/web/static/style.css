@@ -1621,22 +1621,61 @@ th.text-center, td.text-center {
 }
 .ho-filters-bar {
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
+.ho-filters-bar .controls-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+.ho-filters-bar .control-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ho-filters-bar .control-item select,
+.ho-filters-bar .control-item input,
 .ho-input {
   font-family: inherit;
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 13px;
+  height: 36px;
+  padding: 6px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background: #ffffff;
   color: #111827;
-  min-width: 200px;
+  box-sizing: border-box;
+  min-width: 170px;
+}
+.ho-filters-bar .btn-sm {
+  height: 36px;
+  padding: 6px 14px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 .ho-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+  align-items: stretch;
+}
+@media (max-width: 1120px) {
+  .ho-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .ho-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .ho-kpi-card {
   background: #ffffff;
@@ -1645,6 +1684,10 @@ th.text-center, td.text-center {
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  min-height: 98px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 .ho-kpi-label {
   font-size: 11px;
@@ -1655,7 +1698,7 @@ th.text-center, td.text-center {
   margin-bottom: 4px;
 }
 .ho-kpi-val {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   color: #111827;
   line-height: 1.1;
@@ -1990,15 +2033,27 @@ th.text-center, td.text-center {
 }
 .ho-format-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+  align-items: stretch;
+}
+@media (max-width: 860px) {
+  .ho-format-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .ho-format-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 .ho-format-header {
   display: flex;

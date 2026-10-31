@@ -219,7 +219,9 @@ def _register_report_routes(app: Flask, service: IssuesService) -> None:
     @app.get("/api/ho/performance")
     def get_ho_performance() -> Response:
         """Department operational efficiency and resolution performance report."""
-        issues = service.db.list_issues()
+        ctx = _user_context()
+        filters = _extract_query_filters(ctx)
+        issues = service.db.list_issues(filters)
         perf: dict[str, dict[str, Any]] = {}
         for it in issues:
             dept = it.get("owning_department") or "Store Ops"
@@ -244,7 +246,7 @@ def _register_report_routes(app: Flask, service: IssuesService) -> None:
             s["ack_rate"] = round((s["ack_count"] / tot) * 100, 1) if tot > 0 else 0.0
             rows.append(s)
 
-        return jsonify(performance=rows)
+        return jsonify(performance=rows, departments=perf)
 
 
 def register_ho_routes(app: Flask, service: IssuesService) -> None:
