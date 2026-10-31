@@ -1420,7 +1420,7 @@ function setupAsk(suggestions) {
       geminiOption.disabled = false;
       geminiOption.textContent = "Local + AI summary";
       if (keyBtn) {
-        keyBtn.textContent = customKey ? "🔑 Key Active" : "🔑 Server Key";
+        keyBtn.textContent = customKey ? "Key: Active" : "Key: Server";
         keyBtn.title = customKey ? "API key active from session" : "API key configured on server";
       }
     } else {
@@ -1582,7 +1582,7 @@ function updateDatasetBanner(dataset) {
   if (!banner) return;
   if (dataset && dataset.is_custom) {
     banner.hidden = false;
-    $("dataset-banner-text").textContent = (dataset.name || "Custom Upload") + " · " + (dataset.row_count || 0) + " records · " + (dataset.date_min || "") + " to " + (dataset.date_max || "");
+    $("dataset-banner-text").textContent = (dataset.name || "Custom Upload") + " | " + (dataset.row_count || 0) + " records | " + (dataset.date_min || "") + " to " + (dataset.date_max || "");
   } else {
     banner.hidden = true;
   }
@@ -2149,6 +2149,17 @@ async function hoApi(path, opts = {}) {
   return api(path, Object.assign({}, opts, { headers }));
 }
 
+function switchHoSub(subName) {
+  CURRENT_HO_SUB = subName;
+  const subnavBtns = document.querySelectorAll(".ho-subnav-btn");
+  subnavBtns.forEach((b) => {
+    const isPrimaryTab = b.dataset.sub === subName;
+    const isChildOfAll = (subName === "dept" || subName === "pending" || subName === "overdue" || subName === "verification" || subName === "resolved") && b.dataset.sub === "all";
+    b.classList.toggle("active", isPrimaryTab || isChildOfAll);
+  });
+  renderHoView().catch(showErr);
+}
+
 function initHeadOffice() {
   if (HO_INITIALIZED) return;
   HO_INITIALIZED = true;
@@ -2156,10 +2167,7 @@ function initHeadOffice() {
   const subnavBtns = document.querySelectorAll(".ho-subnav-btn");
   subnavBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
-      subnavBtns.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      CURRENT_HO_SUB = btn.dataset.sub || "overview";
-      renderHoView().catch(showErr);
+      switchHoSub(btn.dataset.sub || "overview");
     });
   });
 
@@ -2450,6 +2458,36 @@ function renderStoreProblemsTable(issues, summaryTitle) {
     )
   );
 
+  const statusPills = [
+    { key: "all", label: "All Problems" },
+    { key: "overdue", label: "Overdue SLA" },
+    { key: "verification", label: "Awaiting Verification" },
+    { key: "pending", label: "In Progress / Pending" },
+    { key: "resolved", label: "Verified Closed" },
+    { key: "dept", label: "My Department" }
+  ];
+
+  const pillRow = el(
+    "div",
+    { class: "ho-status-filter-pills" },
+    ...statusPills.map((sp) => {
+      const isAct = CURRENT_HO_SUB === sp.key || (CURRENT_HO_SUB === "overview" && sp.key === "all");
+      const pillBtn = el(
+        "button",
+        {
+          type: "button",
+          class: "ho-filter-pill" + (isAct ? " active" : ""),
+          textContent: sp.label
+        }
+      );
+      pillBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        switchHoSub(sp.key);
+      });
+      return pillBtn;
+    })
+  );
+
   return el(
     "div",
     { class: "card ho-mt-16" },
@@ -2464,6 +2502,7 @@ function renderStoreProblemsTable(issues, summaryTitle) {
       { class: "sub-meta" },
       "Direct end-to-end tracking: Store owners update corrective actions taken, and Head Office verifies resolution before closure."
     ),
+    pillRow,
     table
   );
 }
@@ -2510,26 +2549,30 @@ async function renderHoOverview(container) {
   if (roleNotice) elements.push(roleNotice);
 
   const kpiItems = [
-    { label: "Total Problems", val: total, sub: "Across monitored stores" },
-    { label: "Verified Solved", val: counts.VERIFIED_CLOSED || counts.verified_closed || 0, sub: "Verified by HO", isGreen: true },
-    { label: "Awaiting HO Verification", val: counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0, sub: "Claimed resolved by store", isAmber: (counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0) > 0 },
-    { label: "In Progress", val: counts.IN_PROGRESS || counts.in_progress || 0, sub: "Store action ongoing" },
-    { label: "Blocked / Pending", val: counts.PENDING || counts.pending || 0, sub: "Waiting on parts/approval" },
-    { label: "Overdue", val: overdue, sub: "SLA target breached", isOverdue: overdue > 0 }
+    { label: "Total Problems", val: total, sub: "Across monitored stores", subView: "all" },
+    { label: "Verified Solved", val: counts.VERIFIED_CLOSED || counts.verified_closed || 0, sub: "Verified by HO", isGreen: true, subView: "resolved" },
+    { label: "Awaiting HO Verification", val: counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0, sub: "Claimed resolved by store", isAmber: (counts.RESOLVED_AWAITING_VERIFICATION || counts.awaiting_verification || 0) > 0, subView: "verification" },
+    { label: "In Progress", val: counts.IN_PROGRESS || counts.in_progress || 0, sub: "Store action ongoing", subView: "pending" },
+    { label: "Blocked / Pending", val: counts.PENDING || counts.pending || 0, sub: "Waiting on parts/approval", subView: "pending" },
+    { label: "Overdue", val: overdue, sub: "SLA target breached", isOverdue: overdue > 0, subView: "overdue" }
   ];
 
   const kpiGrid = el(
     "div",
     { class: "ho-kpi-grid" },
-    ...kpiItems.map((item) =>
-      el(
+    ...kpiItems.map((item) => {
+      const card = el(
         "div",
-        { class: "ho-kpi-card" + (item.isOverdue ? " ho-kpi-card-overdue" : item.isGreen ? " ho-kpi-card-verified" : "") },
+        { class: "ho-kpi-card ho-kpi-clickable" + (item.isOverdue ? " ho-kpi-card-overdue" : item.isGreen ? " ho-kpi-card-verified" : "") },
         el("div", { class: "ho-kpi-val" }, String(item.val)),
         el("div", { class: "ho-kpi-label" }, item.label),
         el("div", { class: "ho-kpi-sub" }, item.sub)
-      )
-    )
+      );
+      if (item.subView) {
+        card.addEventListener("click", () => switchHoSub(item.subView));
+      }
+      return card;
+    })
   );
   elements.push(kpiGrid);
 

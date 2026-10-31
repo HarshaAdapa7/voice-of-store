@@ -1538,34 +1538,86 @@ th.text-center, td.text-center {
 }
 .ho-subnav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 .ho-subnav-btn {
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: #4b5563;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .ho-subnav-btn:hover {
   background: #f3f4f6;
   color: #111827;
 }
 .ho-subnav-btn.active {
-  background: #111827;
+  background: #0f766e;
   color: #ffffff;
-  border-color: #111827;
+  border-color: #0f766e;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.ho-kpi-clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ho-kpi-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+  border-color: #0f766e;
+}
+.ho-status-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 14px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.ho-filter-pill {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ho-filter-pill:hover {
+  background: #f3f4f6;
+  color: #111827;
+  border-color: #d1d5db;
+}
+.ho-filter-pill.active {
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+  font-weight: 600;
 }
 .ho-filters-bar {
   margin-bottom: 16px;
