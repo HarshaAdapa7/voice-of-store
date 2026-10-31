@@ -2520,36 +2520,7 @@ async function renderHoOverview(container) {
   const reopened = kpis.reopened_count !== undefined ? kpis.reopened_count : (counts.reopened || 0);
   const critSafety = kpis.critical_safety_count !== undefined ? kpis.critical_safety_count : (counts.critical_safety || 0);
 
-  if (critSafety > 0) {
-    elements.push(
-      el(
-        "div",
-        { class: "banner banner-critical" },
-        el("b", {}, "CRITICAL ESCALATION POLICY ACTIVE: "),
-        critSafety + " critical safety issues detected. Per corporate policy, food and store safety incidents trigger immediate head office escalation regardless of incident volume."
-      )
-    );
-  }
 
-  // Active Role Banner
-  const ctx = getHoUserContext();
-  let roleNotice = null;
-  if (ctx.role === "store_owner") {
-    roleNotice = el(
-      "div",
-      { class: "banner banner-info ho-mb-14" },
-      el("b", {}, "\U0001f3ea STORE OWNER PORTAL: "),
-      "Logged in as Store Owner" + (ctx.storeId ? " (" + ctx.storeId + ")" : "") + ". You can log corrective actions taken on your store's problems and submit them for Head Office verification."
-    );
-  } else if (ctx.role === "head_office_admin") {
-    roleNotice = el(
-      "div",
-      { class: "banner banner-info ho-mb-14" },
-      el("b", {}, "\U0001f3e2 HEAD OFFICE CONTROL CENTER: "),
-      "Logged in as Head Office Administrator. You can monitor problems across all stores, check actions taken by store owners, and verify resolution closures."
-    );
-  }
-  if (roleNotice) elements.push(roleNotice);
 
   const selectedStoreElem = $("ho-filter-store");
   const selectedStoreText = selectedStoreElem && selectedStoreElem.value && selectedStoreElem.selectedOptions && selectedStoreElem.selectedOptions[0] ? selectedStoreElem.selectedOptions[0].textContent : null;
